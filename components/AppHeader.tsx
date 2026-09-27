@@ -20,10 +20,12 @@ export function AppHeader({ profile }: { profile: UserProfile | null }) {
 
   useEffect(() => {
     let active = true;
-    db.getFirstAsync<{ count: number }>("SELECT count(*) as count FROM sync_queue WHERE status = 'pending'")
+    const loadPending = () => db.getFirstAsync<{ count: number }>("SELECT (SELECT count(*) FROM sync_queue WHERE status = 'pending') + (SELECT count(*) FROM offline_sales WHERE status IN ('pending','failed')) as count")
       .then((row) => { if (active) setPending(row?.count ?? 0); })
       .catch(() => {});
-    return () => { active = false; };
+    void loadPending();
+    const interval = setInterval(() => { void loadPending(); }, 5000);
+    return () => { active = false; clearInterval(interval); };
   }, [db]);
 
   useEffect(() => {
@@ -94,6 +96,7 @@ export function AppHeader({ profile }: { profile: UserProfile | null }) {
             <Text style={styles.detail}>Work mode: {mode === 'online' ? 'Online' : 'Offline'}</Text>
             <Text style={styles.detail}>Pending sync: {pending}</Text>
             <Text style={styles.detail}>Last sync: Not synced yet</Text>
+            <Pressable onPress={() => { setConnectionOpen(false); router.push('/settings/sync'); }}><Text style={styles.modeText}>Open sync queue</Text></Pressable>
             <Pressable style={styles.modeRow} onPress={() => requestMode('online')}><Text style={styles.modeText}>{mode === 'online' ? '●' : '○'}  Work Online</Text></Pressable>
             <Pressable style={styles.modeRow} onPress={() => requestMode('offline')}><Text style={styles.modeText}>{mode === 'offline' ? '●' : '○'}  Work Offline</Text></Pressable>
             <Pressable onPress={() => setConnectionOpen(false)} style={styles.close}><Text style={styles.closeText}>Close</Text></Pressable>

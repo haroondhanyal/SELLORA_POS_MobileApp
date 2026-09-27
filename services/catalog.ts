@@ -1,4 +1,5 @@
 import * as Crypto from 'expo-crypto';
+import * as SQLite from 'expo-sqlite';
 import * as FileSystem from 'expo-file-system/legacy';
 import { requireSupabase } from '@/services/supabase';
 import type { PickerOption } from '@/components/OptionPicker';
@@ -127,7 +128,18 @@ export async function listBranchWarehouses(branchId: string) {
   const { data, error } = await requireSupabase().from('warehouses')
     .select('id, name, branch_id, is_primary').eq('branch_id', branchId).eq('is_active', true).order('name');
   if (error) throw error;
-  return (data ?? []).map((row) => ({ id: row.id, label: row.name, branch_id: row.branch_id, is_primary: row.is_primary }));
+  const locations = (data ?? []).map((row) => ({ id: row.id, label: row.name, branch_id: row.branch_id, is_primary: row.is_primary }));
+  const db = await SQLite.openDatabaseAsync('sellora.db');
+  await db.runAsync('DELETE FROM cached_warehouses WHERE branch_id=?', branchId);
+  for (const location of locations) await db.runAsync('INSERT INTO cached_warehouses(branch_id,id,payload) VALUES(?,?,?)', branchId, location.id, JSON.stringify(location));
+  return locations;
+}
+
+/** Loads the last warehouse list saved for this branch when POS is offline. */
+export async function listCachedBranchWarehouses(branchId: string) {
+  const db = await SQLite.openDatabaseAsync('sellora.db');
+  const rows = await db.getAllAsync<{payload:string}>('SELECT payload FROM cached_warehouses WHERE branch_id=?', branchId);
+  return rows.map((row) => JSON.parse(row.payload) as {id:string;label:string;branch_id:string;is_primary:boolean});
 }
 
 /** Combines products, variants and selected-warehouse stock into the items shown in POS. */
@@ -167,7 +179,27 @@ export async function listSellableItems(warehouseId: string): Promise<SellablePr
       });
     }
   }
+  await cacheSellableItems(warehouseId, sellable);
   return sellable;
+}
+
+/** Returns the last product and stock snapshot saved for POS offline browsing. */
+export async function listCachedSellableItems(warehouseId: string): Promise<SellableProduct[]> {
+  const db = await SQLite.openDatabaseAsync('sellora.db');
+  const rows = await db.getAllAsync<{ payload: string }>('SELECT payload FROM cached_sellable_items WHERE warehouse_id = ? ORDER BY item_key', warehouseId);
+  return rows.map((row) => JSON.parse(row.payload) as SellableProduct);
+}
+
+/** Refreshes the local POS catalogue snapshot after a successful online load. */
+async function cacheSellableItems(warehouseId: string, items: SellableProduct[]) {
+  const db = await SQLite.openDatabaseAsync('sellora.db');
+  await db.withTransactionAsync(async () => {
+    await db.runAsync('DELETE FROM cached_sellable_items WHERE warehouse_id = ?', warehouseId);
+    for (const item of items) {
+      await db.runAsync('INSERT INTO cached_sellable_items (warehouse_id, item_key, payload, updated_at) VALUES (?, ?, ?, ?)',
+        warehouseId, `${item.productId}:${item.variantId ?? 'base'}`, JSON.stringify(item), new Date().toISOString());
+    }
+  });
 }
 
 /** Lists parent products or their variant rows for purchase and transfer forms. */

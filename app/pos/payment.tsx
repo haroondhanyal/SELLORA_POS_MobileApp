@@ -12,6 +12,7 @@ import { useCart } from '@/providers/CartProvider';
 import { useCurrency } from '@/providers/CurrencyProvider';
 import { calculateCartTotals } from '@/services/cart';
 import { completeSale, type PaymentLine } from '@/services/pos';
+import { saveOfflineSale } from '@/services/offlineSales';
 import { colors } from '@/theme/colors';
 
 const paymentMethods = [
@@ -70,16 +71,12 @@ export default function PosPaymentScreen() {
 
     setBusy(true);
     try {
-      const saleId = await completeSale({
-        branchId: profile.primary_branch_id,
-        warehouseId,
-        customerId,
-        salesAgentId,
-        items,
-        payments: validPayments.map((payment): PaymentLine => ({ method: payment.method, amount: Number(payment.amount), reference: payment.reference.trim() })),
-      });
+      const paymentLines = validPayments.map((payment): PaymentLine => ({ method: payment.method, amount: Number(payment.amount), reference: payment.reference.trim() }));
+      const saleId = mode === 'offline'
+        ? await saveOfflineSale({ userId: session?.user.id ?? '', branchId: profile.primary_branch_id, warehouseId, customerId, salesAgentId, items, payments: paymentLines, subtotal: totals.subtotal, discountTotal: totals.discount, taxTotal: totals.tax, total: totals.total, currency: baseCurrency })
+        : await completeSale({ branchId: profile.primary_branch_id, warehouseId, customerId, salesAgentId, items, payments: paymentLines });
       clearCart();
-      router.replace({ pathname: '/pos/receipt', params: { saleId } });
+      router.replace({ pathname: mode === 'offline' ? '/pos/offline-receipt' : '/pos/receipt', params: { saleId } });
     } catch (error) {
       Alert.alert('Sale was not completed', error instanceof Error ? error.message : 'Review stock, branch access and payment details.');
     } finally { setBusy(false); }
@@ -93,7 +90,7 @@ export default function PosPaymentScreen() {
       <View style={styles.page}>
         <AppHeader profile={profile} />
         <Text style={styles.title}>Payment</Text>
-        {mode === 'offline' ? <Text style={styles.help}>Switch Online from the header to complete a sale. Offline sale queuing is not enabled yet.</Text> : null}
+        {mode === 'offline' ? <Text style={styles.help}>This sale is saved on this device and will sync when online. Customer credit and store credit need a connection.</Text> : null}
         <Text style={styles.help}>All amounts are entered in {baseCurrency}. The saved receipt keeps the business base currency.</Text>
         <View style={styles.summary}>
           <Text style={styles.totalLabel}>Amount due</Text>
@@ -103,13 +100,13 @@ export default function PosPaymentScreen() {
         {payments.map((payment, index) => (
           <View key={index} style={styles.paymentCard}>
             <View style={styles.rowTitle}><Text style={styles.rowHeading}>Payment {index + 1}</Text>{payments.length > 1 ? <Pressable onPress={() => removePayment(index)}><Text style={styles.remove}>Remove</Text></Pressable> : null}</View>
-            <OptionPicker label="Method" value={payment.method} options={paymentMethods} onChange={(value) => updatePayment(index, 'method', value)} />
+            <OptionPicker label="Method" value={payment.method} options={mode === 'offline' ? paymentMethods.filter((item) => !['customer_credit', 'store_credit'].includes(item.id)) : paymentMethods} onChange={(value) => updatePayment(index, 'method', value)} />
             <FormField label={`Amount (${baseCurrency})`} value={payment.amount} onChangeText={(value) => updatePayment(index, 'amount', value)} keyboardType="decimal-pad" />
             <FormField label="Reference (optional)" value={payment.reference} onChangeText={(value) => updatePayment(index, 'reference', value)} />
           </View>
         ))}
         <AppButton title="Add split payment" secondary onPress={addPayment} />
-        <AppButton title="Complete sale" onPress={submit} busy={busy} disabled={items.length === 0 || mode === 'offline'} />
+        <AppButton title={mode === 'offline' ? 'Save offline sale' : 'Complete sale'} onPress={submit} busy={busy} disabled={items.length === 0} />
       </View>
     </Screen>
   );

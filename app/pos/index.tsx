@@ -11,7 +11,7 @@ import { useAuth } from '@/providers/AuthProvider';
 import { useConnection } from '@/providers/ConnectionProvider';
 import { useCurrency } from '@/providers/CurrencyProvider';
 import { useCart, cartKey } from '@/providers/CartProvider';
-import { getProductImageUrl, listBrands, listCategories, listBranchWarehouses, listSellableItems } from '@/services/catalog';
+import { getProductImageUrl, listBrands, listCategories, listBranchWarehouses, listCachedBranchWarehouses, listCachedSellableItems, listSellableItems } from '@/services/catalog';
 import type { SellableProduct } from '@/providers/CartProvider';
 import { colors } from '@/theme/colors';
 
@@ -38,7 +38,8 @@ export default function PosScreen() {
   useEffect(() => { if (params.barcode) setQuery(params.barcode); }, [params.barcode]);
   useEffect(() => {
     if (!profile?.primary_branch_id) return;
-    Promise.all([listBranchWarehouses(profile.primary_branch_id), listCategories(), listBrands()]).then(([locations, categoryOptions, brandOptions]) => {
+    const warehouseRequest = mode === 'offline' ? listCachedBranchWarehouses(profile.primary_branch_id) : listBranchWarehouses(profile.primary_branch_id);
+    Promise.all([warehouseRequest, mode === 'offline' ? Promise.resolve([]) : listCategories(), mode === 'offline' ? Promise.resolve([]) : listBrands()]).then(([locations, categoryOptions, brandOptions]) => {
       setWarehouses(locations);
       setCategories(categoryOptions);
       setBrands(brandOptions);
@@ -47,7 +48,7 @@ export default function PosScreen() {
         ?? locations[0];
       if (startingLocation) { setWarehouseId(startingLocation.id); setWarehouse(startingLocation.id); }
     }).catch((error) => Alert.alert('Could not load POS setup', error instanceof Error ? error.message : 'Please try again.'));
-  }, [profile?.primary_branch_id]);
+  }, [profile?.primary_branch_id, mode]);
 
   useEffect(() => {
     let active = true;
@@ -55,10 +56,10 @@ export default function PosScreen() {
       if (!warehouseId) { setProducts([]); return; }
       setLoading(true);
       try {
-        const sellable = await listSellableItems(warehouseId);
+        const sellable = mode === 'offline' ? await listCachedSellableItems(warehouseId) : await listSellableItems(warehouseId);
         if (!active) return;
         setProducts(sellable);
-        const images = await Promise.all(sellable.map(async (product) => [product.productId, await getProductImageUrl(product.imagePath)] as const));
+        const images = mode === 'offline' ? [] : await Promise.all(sellable.map(async (product) => [product.productId, await getProductImageUrl(product.imagePath)] as const));
         if (active) setPhotoUrls(Object.fromEntries(images.filter(([, uri]) => Boolean(uri))) as Record<string, string>);
       } catch (error) {
         Alert.alert('Could not load POS products', error instanceof Error ? error.message : 'Check your branch and permissions.');
@@ -66,7 +67,7 @@ export default function PosScreen() {
     }
     void loadItems();
     return () => { active = false; };
-  }, [warehouseId]);
+  }, [warehouseId, mode]);
 
   const visibleProducts = useMemo(() => {
     const search = query.trim().toLowerCase();
@@ -90,14 +91,13 @@ export default function PosScreen() {
   if (locked) return <Redirect href="/auth/pin-login" />;
   if (!session) return <Redirect href="/auth/login" />;
   if (!canSell) return <Screen><Text style={styles.title}>Sales access required</Text><Text style={styles.help}>Your current role cannot create sales.</Text></Screen>;
-  if (mode === 'offline') return <Screen><AppHeader profile={profile} /><Text style={styles.title}>Offline sales are not enabled yet</Text><Text style={styles.help}>Sellora is currently set to Offline Mode. Switch Online from the header to create a sale. Local sale queuing will arrive with the offline sync phase.</Text></Screen>;
 
   return (
     <Screen>
       <View style={styles.page}>
         <AppHeader profile={profile} />
         <View style={styles.heading}>
-          <View><Text style={styles.title}>Point of sale</Text><Text style={styles.help}>Select items to add them to the cart.</Text></View>
+          <View><Text style={styles.title}>Point of sale</Text><Text style={styles.help}>{mode === 'offline' ? 'Offline catalogue snapshot' : 'Select items to add them to the cart.'}</Text></View>
           <Pressable style={styles.cartButton} onPress={() => router.push('/pos/cart')}><Text style={styles.cartText}>Cart · {cartItems.reduce((count, item) => count + item.quantity, 0)}</Text></Pressable>
         </View>
         {!profile?.primary_branch_id ? <Text style={styles.empty}>Your administrator must assign a branch before you can create a sale.</Text> : null}

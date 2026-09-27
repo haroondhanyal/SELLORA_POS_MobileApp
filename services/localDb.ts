@@ -26,12 +26,36 @@ export async function initializeLocalDatabase(db: SQLiteDatabase) {
       updated_at TEXT NOT NULL,
       PRIMARY KEY (base_currency, quote_currency)
     );
+    CREATE TABLE IF NOT EXISTS cached_sellable_items (
+      warehouse_id TEXT NOT NULL,
+      item_key TEXT NOT NULL,
+      payload TEXT NOT NULL,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (warehouse_id, item_key)
+    );
+    CREATE TABLE IF NOT EXISTS cached_warehouses (
+      branch_id TEXT NOT NULL,
+      id TEXT NOT NULL,
+      payload TEXT NOT NULL,
+      PRIMARY KEY (branch_id, id)
+    );
+    CREATE TABLE IF NOT EXISTS offline_sales (
+      id TEXT PRIMARY KEY NOT NULL,
+      user_id TEXT NOT NULL,
+      payload TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','syncing','synced','failed','conflict')),
+      attempt_count INTEGER NOT NULL DEFAULT 0,
+      last_error TEXT,
+      server_sale_id TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      synced_at TEXT
+    );
   `);
 }
 
 /** Reads a count for the pressable connection status sheet. */
 export async function getPendingSyncCount() {
   const db = await SQLite.openDatabaseAsync('sellora.db');
-  const result = await db.getFirstAsync<{ count: number }>("SELECT count(*) as count FROM sync_queue WHERE status = 'pending'");
+  const result = await db.getFirstAsync<{ count: number }>("SELECT (SELECT count(*) FROM sync_queue WHERE status = 'pending') + (SELECT count(*) FROM offline_sales WHERE status IN ('pending','failed')) as count");
   return result?.count ?? 0;
 }
