@@ -1,0 +1,4 @@
+project_id = "sellora-mobile"
+
+[functions.sellora-ai-copilot]
+verify_jwt = true

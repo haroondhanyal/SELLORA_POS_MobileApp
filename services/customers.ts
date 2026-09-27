@@ -2,6 +2,7 @@ import { requireSupabase } from '@/services/supabase';
 import * as Crypto from 'expo-crypto';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as SQLite from 'expo-sqlite';
+import { decryptLocalJson, encryptLocalJson } from '@/services/localEncryption';
 
 export type Customer = {
   id: string;
@@ -28,7 +29,7 @@ export async function listCustomers(branchId: string) {
   const customers = (data ?? []) as Customer[];
   const db = await SQLite.openDatabaseAsync('sellora.db');
   for (const customer of customers) {
-    await db.runAsync('INSERT INTO cached_customers(branch_id,id,payload,updated_at) VALUES(?,?,?,?) ON CONFLICT(branch_id,id) DO UPDATE SET payload=excluded.payload,updated_at=excluded.updated_at', branchId, customer.id, JSON.stringify(customer), new Date().toISOString());
+    await db.runAsync('INSERT INTO cached_customers(branch_id,id,payload,updated_at) VALUES(?,?,?,?) ON CONFLICT(branch_id,id) DO UPDATE SET payload=excluded.payload,updated_at=excluded.updated_at', branchId, customer.id, await encryptLocalJson(customer), new Date().toISOString());
   }
   return customers;
 }
@@ -37,7 +38,8 @@ export async function listCustomers(branchId: string) {
 export async function listCachedCustomers(branchId: string) {
   const db = await SQLite.openDatabaseAsync('sellora.db');
   const rows = await db.getAllAsync<{payload:string}>('SELECT payload FROM cached_customers WHERE branch_id=?', branchId);
-  return rows.map((row) => JSON.parse(row.payload) as Customer).sort((left,right)=>left.full_name.localeCompare(right.full_name));
+  const customers = await Promise.all(rows.map((row) => decryptLocalJson<Customer>(row.payload)));
+  return customers.sort((left,right)=>left.full_name.localeCompare(right.full_name));
 }
 
 /** Saves a customer on-device and queues it for insert before dependent offline sales sync. */
@@ -54,8 +56,8 @@ export async function queueOfflineCustomer(input: {
     assigned_sales_agent_id: input.assigned_sales_agent_id,
   };
   await db.withTransactionAsync(async () => {
-    await db.runAsync('INSERT INTO cached_customers(branch_id,id,payload) VALUES(?,?,?)', customer.branch_id, customer.id, JSON.stringify(customer));
-    await db.runAsync('INSERT INTO offline_customers(id,user_id,branch_id,payload,status) VALUES(?,?,?,?,\'pending\')', customer.id, input.userId, customer.branch_id, JSON.stringify({ ...customer, created_by: input.userId }));
+    await db.runAsync('INSERT INTO cached_customers(branch_id,id,payload) VALUES(?,?,?)', customer.branch_id, customer.id, await encryptLocalJson(customer));
+    await db.runAsync('INSERT INTO offline_customers(id,user_id,branch_id,payload,status) VALUES(?,?,?,?,\'pending\')', customer.id, input.userId, customer.branch_id, await encryptLocalJson({ ...customer, created_by: input.userId }));
   });
   return customer.id;
 }
@@ -129,14 +131,15 @@ export async function listBranchSalesAgents(branchId: string) {
   if (error) throw error;
   const agents = (data ?? []) as { id: string; full_name: string }[];
   const db = await SQLite.openDatabaseAsync('sellora.db');
-  for (const agent of agents) await db.runAsync('INSERT INTO cached_sales_agents(branch_id,id,full_name) VALUES(?,?,?) ON CONFLICT(branch_id,id) DO UPDATE SET full_name=excluded.full_name', branchId, agent.id, agent.full_name);
+  for (const agent of agents) await db.runAsync('INSERT INTO cached_sales_agents(branch_id,id,full_name) VALUES(?,?,?) ON CONFLICT(branch_id,id) DO UPDATE SET full_name=excluded.full_name', branchId, agent.id, await encryptLocalJson(agent.full_name));
   return agents;
 }
 
 /** Reads sales agents cached by an online POS session in the same branch. */
 export async function listCachedBranchSalesAgents(branchId:string) {
   const db=await SQLite.openDatabaseAsync('sellora.db');
-  return db.getAllAsync<{id:string;full_name:string}>('SELECT id,full_name FROM cached_sales_agents WHERE branch_id=? ORDER BY full_name',branchId);
+  const rows=await db.getAllAsync<{id:string;full_name:string}>('SELECT id,full_name FROM cached_sales_agents WHERE branch_id=? ORDER BY id',branchId);
+  return Promise.all(rows.map(async(row)=>({...row,full_name:await decryptLocalJson<string>(row.full_name)})));
 }
 
 /** Uploads local customer records idempotently before their queued sale is uploaded. */
@@ -147,7 +150,7 @@ export async function syncOfflineCustomers(userId:string) {
   for(const row of rows){
     try{
       await db.runAsync("UPDATE offline_customers SET status='syncing',last_error=NULL WHERE id=?",row.id);
-      const customer=JSON.parse(row.payload) as Customer & {created_by:string};
+      const customer=await decryptLocalJson<Customer & {created_by:string}>(row.payload);
       const {data:{user}}=await requireSupabase().auth.getUser();
       if(!user||user.id!==userId) throw new Error('Sign in with the account that created this customer.');
       const {error}=await requireSupabase().from('customers').upsert({
@@ -166,7 +169,8 @@ export async function syncOfflineCustomers(userId:string) {
 /** Lists local customer queue state for diagnostics and retry visibility. */
 export async function listOfflineCustomers(userId:string) {
   const db=await SQLite.openDatabaseAsync('sellora.db');
-  return db.getAllAsync<{id:string;payload:string;status:string;last_error:string|null;created_at:string}>('SELECT id,payload,status,last_error,created_at FROM offline_customers WHERE user_id=? ORDER BY created_at DESC LIMIT 100',userId);
+  const rows=await db.getAllAsync<{id:string;payload:string;status:string;last_error:string|null;created_at:string}>('SELECT id,payload,status,last_error,created_at FROM offline_customers WHERE user_id=? ORDER BY created_at DESC LIMIT 100',userId);
+  return Promise.all(rows.map(async(row)=>({...row,payload:await decryptLocalJson<Customer>(row.payload)})));
 }
 
 /** Posts a payment against one customer's outstanding balance. */

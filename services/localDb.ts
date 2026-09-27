@@ -1,10 +1,12 @@
 import * as SQLite from 'expo-sqlite';
 import type { SQLiteDatabase } from 'expo-sqlite';
+import { encryptLocalJson, isLocalJsonEncrypted } from '@/services/localEncryption';
 
 /** Creates the small local settings and queued-work tables used from app launch. */
 export async function initializeLocalDatabase(db: SQLiteDatabase) {
   await db.execAsync(`
     PRAGMA journal_mode = WAL;
+    PRAGMA secure_delete = ON;
     CREATE TABLE IF NOT EXISTS app_settings (
       key TEXT PRIMARY KEY NOT NULL,
       value TEXT NOT NULL,
@@ -64,6 +66,48 @@ export async function initializeLocalDatabase(db: SQLiteDatabase) {
       synced_at TEXT
     );
   `);
+
+  // Encrypt sensitive cached records left by earlier app versions on first launch.
+  await encryptLegacyPayloads(db);
+  // Truncate the WAL so legacy plaintext cache pages are not left in the journal.
+  await db.execAsync('PRAGMA wal_checkpoint(TRUNCATE);');
+}
+
+/** Protects existing plaintext JSON rows while keeping their SQLite IDs unchanged. */
+async function encryptLegacyPayloads(db: SQLiteDatabase) {
+  const payloadTables = [
+    { table: 'sync_queue', keys: ['id'] },
+    { table: 'cached_sellable_items', keys: ['warehouse_id', 'item_key'] },
+    { table: 'cached_warehouses', keys: ['branch_id', 'id'] },
+    { table: 'cached_customers', keys: ['branch_id', 'id'] },
+    { table: 'offline_customers', keys: ['id'] },
+    { table: 'offline_sales', keys: ['id'] },
+  ] as const;
+
+  for (const { table, keys } of payloadTables) {
+    const rows = await db.getAllAsync<Record<string, string>>(`SELECT ${keys.join(',')},payload FROM ${table}`);
+    for (const row of rows) {
+      if (isLocalJsonEncrypted(row.payload)) continue;
+      const encrypted = await encryptLocalJson(JSON.parse(row.payload));
+      const where = keys.map((key) => `${key}=?`).join(' AND ');
+      await db.runAsync(`UPDATE ${table} SET payload=? WHERE ${where}`, encrypted, ...keys.map((key) => row[key]));
+    }
+  }
+
+  // Sales-agent names are stored in their own column rather than a JSON payload.
+  const agents = await db.getAllAsync<{ branch_id: string; id: string; full_name: string }>(
+    'SELECT branch_id,id,full_name FROM cached_sales_agents',
+  );
+  for (const agent of agents) {
+    if (isLocalJsonEncrypted(agent.full_name)) continue;
+    const encryptedName = await encryptLocalJson(agent.full_name);
+    await db.runAsync(
+      'UPDATE cached_sales_agents SET full_name=? WHERE branch_id=? AND id=?',
+      encryptedName,
+      agent.branch_id,
+      agent.id,
+    );
+  }
 }
 
 /** Reads a count for the pressable connection status sheet. */

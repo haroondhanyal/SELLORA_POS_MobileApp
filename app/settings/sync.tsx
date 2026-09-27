@@ -9,7 +9,7 @@ import { useAuth } from '@/providers/AuthProvider';
 import { useConnection } from '@/providers/ConnectionProvider';
 import { useOfflineSync } from '@/providers/OfflineSyncProvider';
 import { listOfflineCustomers } from '@/services/customers';
-import { listOfflineSales, type OfflineSalePayload } from '@/services/offlineSales';
+import { listOfflineSales } from '@/services/offlineSales';
 import { colors } from '@/theme/colors';
 
 /** Shows queued local records and lets staff retry delivery when online. */
@@ -26,11 +26,11 @@ export default function SyncQueueScreen() {
     if (!session?.user.id) return;
     try {
       const [saleRows, customerRows, saved] = await Promise.all([
-        listOfflineSales(),
+        listOfflineSales(session.user.id),
         listOfflineCustomers(session.user.id),
         db.getFirstAsync<{ value: string }>('SELECT value FROM app_settings WHERE key=?', 'last_sync_at'),
       ]);
-      setSales(saleRows.filter((row) => row.user_id === session.user.id));
+      setSales(saleRows);
       setCustomers(customerRows);
       setLastSync(saved?.value ?? null);
     } catch (error) {
@@ -67,10 +67,9 @@ export default function SyncQueueScreen() {
 
         <Text style={styles.section}>Offline customers</Text>
         {customers.map((row) => {
-          const customer = JSON.parse(row.payload) as { full_name: string };
           return (
             <View key={row.id} style={styles.card}>
-              <Text style={styles.name}>{customer.full_name}</Text>
+              <Text style={styles.name}>{row.payload.full_name}</Text>
               <Text style={[styles.status, row.status === 'failed' && styles.failed]}>{row.status.toUpperCase()}</Text>
               {row.last_error ? <Text style={styles.error}>{row.last_error}</Text> : null}
             </View>
@@ -80,7 +79,7 @@ export default function SyncQueueScreen() {
 
         <Text style={styles.section}>Offline sales</Text>
         {sales.map((row) => {
-          const sale = JSON.parse(row.payload) as OfflineSalePayload;
+          const sale = row.payload;
           return (
             <View key={row.id} style={styles.card}>
               <Text style={styles.name}>Local receipt {row.id.slice(0, 8).toUpperCase()}</Text>

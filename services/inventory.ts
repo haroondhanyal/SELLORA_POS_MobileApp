@@ -1,6 +1,7 @@
 import { requireSupabase } from '@/services/supabase';
 import * as SQLite from 'expo-sqlite';
 import type { SellableProduct } from '@/providers/CartProvider';
+import { decryptLocalJson, encryptLocalJson } from '@/services/localEncryption';
 
 export type InventoryRow = {
   id: string;
@@ -26,9 +27,9 @@ export async function listInventory() {
     const cached:SellableProduct={productId:row.product_id,variantId:row.variant_id,name:row.product_variants?`${row.products.name} · ${row.product_variants.name}`:row.products.name,
       sku:row.product_variants?.sku??row.products.sku,barcode:null,categoryId:null,brandId:null,price:Number(row.products.sale_price),costPrice:0,taxRate:0,
       imagePath:row.products.image_storage_path,quantityAvailable:Number(row.quantity),minimumStock:Number(row.products.minimum_stock),reorderLevel:Number(row.products.reorder_level)};
-    await db.runAsync('INSERT INTO cached_sellable_items(warehouse_id,item_key,payload,updated_at) VALUES(?,?,?,?) ON CONFLICT(warehouse_id,item_key) DO UPDATE SET payload=excluded.payload,updated_at=excluded.updated_at',row.warehouse_id,`${row.product_id}:${row.variant_id??'base'}`,JSON.stringify(cached),new Date().toISOString());
+    await db.runAsync('INSERT INTO cached_sellable_items(warehouse_id,item_key,payload,updated_at) VALUES(?,?,?,?) ON CONFLICT(warehouse_id,item_key) DO UPDATE SET payload=excluded.payload,updated_at=excluded.updated_at',row.warehouse_id,`${row.product_id}:${row.variant_id??'base'}`,await encryptLocalJson(cached),new Date().toISOString());
     const warehouse={id:row.warehouse_id,label:row.warehouses.name,branch_id:row.warehouses.branch_id,is_primary:false};
-    await db.runAsync('INSERT INTO cached_warehouses(branch_id,id,payload) VALUES(?,?,?) ON CONFLICT(branch_id,id) DO UPDATE SET payload=excluded.payload',row.warehouses.branch_id,row.warehouse_id,JSON.stringify(warehouse));
+    await db.runAsync('INSERT INTO cached_warehouses(branch_id,id,payload) VALUES(?,?,?) ON CONFLICT(branch_id,id) DO UPDATE SET payload=excluded.payload',row.warehouses.branch_id,row.warehouse_id,await encryptLocalJson(warehouse));
   }
   return rows;
 }
@@ -39,10 +40,10 @@ export async function listCachedInventory(branchId:string) {
   const warehouses=await db.getAllAsync<{id:string;payload:string}>('SELECT id,payload FROM cached_warehouses WHERE branch_id=?',branchId);
   const result:InventoryRow[]=[];
   for(const warehouse of warehouses){
-    const location=JSON.parse(warehouse.payload) as {name?:string;label?:string};
+    const location=await decryptLocalJson<{name?:string;label?:string}>(warehouse.payload);
     const items=await db.getAllAsync<{item_key:string;payload:string}>('SELECT item_key,payload FROM cached_sellable_items WHERE warehouse_id=?',warehouse.id);
     for(const cachedRow of items){
-      const item=JSON.parse(cachedRow.payload) as SellableProduct;
+      const item=await decryptLocalJson<SellableProduct>(cachedRow.payload);
       const [productId,variantId]=cachedRow.item_key.split(':');
       result.push({id:`${warehouse.id}:${cachedRow.item_key}`,warehouse_id:warehouse.id,product_id:productId,variant_id:variantId==='base'?null:variantId,
         quantity:item.quantityAvailable,products:{name:item.name.split(' · ')[0],sku:item.sku,sale_price:item.price,minimum_stock:item.minimumStock??0,reorder_level:item.reorderLevel??0,image_storage_path:item.imagePath},

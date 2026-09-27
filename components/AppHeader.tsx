@@ -19,14 +19,15 @@ export function AppHeader({ profile }: { profile: UserProfile | null }) {
   const online = connected && mode === 'online';
 
   useEffect(() => {
+    if (!profile?.id) { setPending(0); return; }
     let active = true;
-    const loadPending = () => db.getFirstAsync<{ count: number }>("SELECT (SELECT count(*) FROM sync_queue WHERE status = 'pending') + (SELECT count(*) FROM offline_sales WHERE status IN ('pending','failed','syncing')) + (SELECT count(*) FROM offline_customers WHERE status IN ('pending','failed','syncing')) as count")
+    const loadPending = () => db.getFirstAsync<{ count: number }>("SELECT (SELECT count(*) FROM offline_sales WHERE user_id=? AND status IN ('pending','failed','syncing')) + (SELECT count(*) FROM offline_customers WHERE user_id=? AND status IN ('pending','failed','syncing')) as count", profile.id, profile.id)
       .then((row) => { if (active) setPending(row?.count ?? 0); })
       .catch(() => {});
     void loadPending();
     const interval = setInterval(() => { void loadPending(); }, 5000);
     return () => { active = false; clearInterval(interval); };
-  }, [db]);
+  }, [db, profile?.id]);
 
   useEffect(() => {
     if (profile?.avatar_storage_path) {

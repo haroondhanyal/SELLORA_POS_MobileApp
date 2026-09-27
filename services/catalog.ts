@@ -1,5 +1,6 @@
 import * as Crypto from 'expo-crypto';
 import * as SQLite from 'expo-sqlite';
+import { decryptLocalJson, encryptLocalJson } from '@/services/localEncryption';
 import * as FileSystem from 'expo-file-system/legacy';
 import { requireSupabase } from '@/services/supabase';
 import type { PickerOption } from '@/components/OptionPicker';
@@ -131,7 +132,7 @@ export async function listBranchWarehouses(branchId: string) {
   const locations = (data ?? []).map((row) => ({ id: row.id, label: row.name, branch_id: row.branch_id, is_primary: row.is_primary }));
   const db = await SQLite.openDatabaseAsync('sellora.db');
   await db.runAsync('DELETE FROM cached_warehouses WHERE branch_id=?', branchId);
-  for (const location of locations) await db.runAsync('INSERT INTO cached_warehouses(branch_id,id,payload) VALUES(?,?,?)', branchId, location.id, JSON.stringify(location));
+  for (const location of locations) await db.runAsync('INSERT INTO cached_warehouses(branch_id,id,payload) VALUES(?,?,?)', branchId, location.id, await encryptLocalJson(location));
   return locations;
 }
 
@@ -139,7 +140,7 @@ export async function listBranchWarehouses(branchId: string) {
 export async function listCachedBranchWarehouses(branchId: string) {
   const db = await SQLite.openDatabaseAsync('sellora.db');
   const rows = await db.getAllAsync<{payload:string}>('SELECT payload FROM cached_warehouses WHERE branch_id=?', branchId);
-  return rows.map((row) => JSON.parse(row.payload) as {id:string;label:string;branch_id:string;is_primary:boolean});
+  return Promise.all(rows.map((row) => decryptLocalJson<{id:string;label:string;branch_id:string;is_primary:boolean}>(row.payload)));
 }
 
 /** Combines products, variants and selected-warehouse stock into the items shown in POS. */
@@ -188,7 +189,7 @@ export async function listSellableItems(warehouseId: string): Promise<SellablePr
 export async function listCachedSellableItems(warehouseId: string): Promise<SellableProduct[]> {
   const db = await SQLite.openDatabaseAsync('sellora.db');
   const rows = await db.getAllAsync<{ payload: string }>('SELECT payload FROM cached_sellable_items WHERE warehouse_id = ? ORDER BY item_key', warehouseId);
-  return rows.map((row) => JSON.parse(row.payload) as SellableProduct);
+  return Promise.all(rows.map((row) => decryptLocalJson<SellableProduct>(row.payload)));
 }
 
 /** Refreshes the local POS catalogue snapshot after a successful online load. */
@@ -198,7 +199,7 @@ async function cacheSellableItems(warehouseId: string, items: SellableProduct[])
     await db.runAsync('DELETE FROM cached_sellable_items WHERE warehouse_id = ?', warehouseId);
     for (const item of items) {
       await db.runAsync('INSERT INTO cached_sellable_items (warehouse_id, item_key, payload, updated_at) VALUES (?, ?, ?, ?)',
-        warehouseId, `${item.productId}:${item.variantId ?? 'base'}`, JSON.stringify(item), new Date().toISOString());
+        warehouseId, `${item.productId}:${item.variantId ?? 'base'}`, await encryptLocalJson(item), new Date().toISOString());
     }
   });
 }

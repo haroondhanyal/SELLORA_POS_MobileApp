@@ -14,8 +14,24 @@ Deno.serve(async (request) => {
   const supabase = createClient(projectUrl, anonKey, { global: { headers: { Authorization: authorization } } });
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) return json({ error: 'Your session has expired. Sign in again.' }, 401);
-  const { question } = await request.json();
+  const { data: profile } = await supabase.from('profiles').select('role,approval_status').eq('id', user.id).maybeSingle();
+  if (!profile || profile.approval_status !== 'approved') return json({ error: 'Approved account access is required.' }, 403);
+  const { data: permissions } = await supabase.from('role_permissions').select('permission_code').eq('role', profile.role);
+  if (!permissions?.some(({ permission_code }) => ['reports.view', 'sales.view_own'].includes(permission_code))) {
+    return json({ error: 'Your role does not have permission to use Copilot.' }, 403);
+  }
+
+  // Bound request size before parsing so arbitrary payloads cannot consume memory.
+  const bodyText = await request.text();
+  if (new TextEncoder().encode(bodyText).byteLength > 16_384) return json({ error: 'Request is too large.' }, 413);
+  let body: { question?: unknown } | null;
+  try { body = JSON.parse(bodyText); } catch { return json({ error: 'Send a valid JSON request.' }, 400); }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return json({ error: 'Send a JSON object with a question.' }, 400);
+  const question = body.question;
   if (typeof question !== 'string' || question.trim().length < 3 || question.length > 500) return json({ error: 'Enter a question up to 500 characters.' }, 400);
+  const { data: allowed, error: rateLimitError } = await supabase.rpc('sellora_claim_ai_request');
+  if (rateLimitError) return json({ error: 'Copilot usage could not be verified. Try again later.' }, 503);
+  if (!allowed) return json({ error: 'You reached the Copilot limit of 20 questions per hour.' }, 429);
 
   // RLS limits sales and stock to the current user's own/assigned branches.
   const since = new Date(Date.now() - 30 * 86400000).toISOString();
@@ -42,7 +58,8 @@ Deno.serve(async (request) => {
   const context = { period_days: 30, completed_sales: sales.filter((sale) => sale.status === 'completed').length, recorded_revenue_base_currency: totalRevenue, top_products_by_quantity: topProducts, low_stock_items: lowStock };
   const ai = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: Deno.env.get('SELLORA_AI_MODEL') ?? 'gpt-4.1-mini', input: [
+    signal: AbortSignal.timeout(30_000),
+    body: JSON.stringify({ model: Deno.env.get('SELLORA_AI_MODEL') ?? 'gpt-4.1-mini', max_output_tokens: 600, input: [
       { role: 'system', content: 'You are Sellora retail copilot. Answer only from the supplied aggregate data. State the 30-day period and that money is in the business base currency. Do not invent missing values. If the data does not answer a question, say so plainly. Keep the answer concise and practical.' },
       { role: 'user', content: `Business data: ${JSON.stringify(context)}\nQuestion: ${question.trim()}` },
     ] }),

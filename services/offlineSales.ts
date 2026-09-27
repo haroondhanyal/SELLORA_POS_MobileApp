@@ -3,6 +3,7 @@ import * as SQLite from 'expo-sqlite';
 import type { CartLine } from '@/providers/CartProvider';
 import { getDeviceId } from '@/services/device';
 import { requireSupabase } from '@/services/supabase';
+import { decryptLocalJson, encryptLocalJson } from '@/services/localEncryption';
 
 export type OfflineSalePayload = {
   id: string; userId: string; branchId: string; warehouseId: string; customerId: string | null; salesAgentId: string;
@@ -23,12 +24,12 @@ export async function saveOfflineSale(input: Omit<OfflineSalePayload, 'id' | 'us
       const key = `${item.productId}:${item.variantId ?? 'base'}`;
       const row = await db.getFirstAsync<{ payload: string }>('SELECT payload FROM cached_sellable_items WHERE warehouse_id=? AND item_key=?', payload.warehouseId, key);
       if (!row) throw new Error(`No offline stock snapshot exists for ${item.name}. Connect online and refresh products first.`);
-      const cached = JSON.parse(row.payload) as CartLine;
+      const cached = await decryptLocalJson<CartLine>(row.payload);
       if (cached.quantityAvailable < item.quantity) throw new Error(`Offline stock is too low for ${item.name}.`);
       cached.quantityAvailable -= item.quantity;
-      await db.runAsync('UPDATE cached_sellable_items SET payload=?,updated_at=? WHERE warehouse_id=? AND item_key=?', JSON.stringify(cached), new Date().toISOString(), payload.warehouseId, key);
+      await db.runAsync('UPDATE cached_sellable_items SET payload=?,updated_at=? WHERE warehouse_id=? AND item_key=?', await encryptLocalJson(cached), new Date().toISOString(), payload.warehouseId, key);
     }
-    await db.runAsync('INSERT INTO offline_sales (id,user_id,payload,status) VALUES (?,?,?,?)', payload.id, payload.userId, JSON.stringify(payload), 'pending');
+    await db.runAsync('INSERT INTO offline_sales (id,user_id,payload,status) VALUES (?,?,?,?)', payload.id, payload.userId, await encryptLocalJson(payload), 'pending');
   });
   return payload.id;
 }
@@ -40,7 +41,7 @@ export async function syncOfflineSales(userId: string) {
   const queued = await db.getAllAsync<{ id: string; payload: string; attempt_count: number }>("SELECT id,payload,attempt_count FROM offline_sales WHERE user_id=? AND status IN ('pending','failed') ORDER BY created_at LIMIT 20", userId);
   let syncedAny = false;
   for (const row of queued) {
-    const sale = JSON.parse(row.payload) as OfflineSalePayload;
+    const sale = await decryptLocalJson<OfflineSalePayload>(row.payload);
     await db.runAsync("UPDATE offline_sales SET status='syncing',attempt_count=attempt_count+1,last_error=NULL WHERE id=?", row.id);
     try {
       const { data: { user } } = await requireSupabase().auth.getUser();
@@ -64,7 +65,8 @@ export async function syncOfflineSales(userId: string) {
 }
 
 /** Lists recent local receipts and sync state for the offline management screen. */
-export async function listOfflineSales() {
+export async function listOfflineSales(userId: string) {
   const db = await SQLite.openDatabaseAsync('sellora.db');
-  return db.getAllAsync<{ id: string; user_id: string; payload: string; status: string; attempt_count: number; last_error: string | null; server_sale_id: string | null; created_at: string; synced_at: string | null }>('SELECT id,user_id,payload,status,attempt_count,last_error,server_sale_id,created_at,synced_at FROM offline_sales ORDER BY created_at DESC LIMIT 100');
+  const rows = await db.getAllAsync<{ id: string; user_id: string; payload: string; status: string; attempt_count: number; last_error: string | null; server_sale_id: string | null; created_at: string; synced_at: string | null }>('SELECT id,user_id,payload,status,attempt_count,last_error,server_sale_id,created_at,synced_at FROM offline_sales WHERE user_id=? ORDER BY created_at DESC LIMIT 100', userId);
+  return Promise.all(rows.map(async(row)=>({...row,payload:await decryptLocalJson<OfflineSalePayload>(row.payload)})));
 }

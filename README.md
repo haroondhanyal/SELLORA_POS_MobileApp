@@ -43,6 +43,7 @@ Phase 11 stores offline customers and sales, caches branch stock for read-only i
    - `202609270010_offline_sync.sql`
    - `202609270011_backup_export.sql`
    - `202609270012_phase_completion.sql`
+   - `202609270013_copilot_rate_limit.sql`
 
 5. Enable email authentication in Supabase. Add `sellora://auth/pending-approval` and `sellora://auth/reset-password` to the allowed redirect URLs.
 6. Run `npx expo start`; press `a` for Android or `i` for iOS.
@@ -97,7 +98,7 @@ After the first admin signs in:
 
 ## Phase 12 — Copilot, backup and release setup
 
-- Sellora Copilot is a Supabase Edge Function. It reads aggregates using the caller's RLS-limited session and sends no customer names or profile data to the AI provider. Configure `OPENAI_API_KEY` and optionally `SELLORA_AI_MODEL` as Edge Function secrets, then deploy `sellora-ai-copilot`.
+- Sellora Copilot is a Supabase Edge Function. It checks the caller's JWT, approval and role permission, reads through the caller's RLS-limited session, and allows up to 20 questions per user per hour. It sends no customer names or profile data to the AI provider. Configure `OPENAI_API_KEY` and optionally `SELLORA_AI_MODEL` as Edge Function secrets, then deploy `sellora-ai-copilot`.
 - Approved admins can export a JSON snapshot through a database function and the native share sheet. Exports include sensitive employee/customer records; storage images are not part of the snapshot. Keep routine Supabase backups enabled as well.
 - Production release still requires real Supabase credentials, applying and reviewing all migrations, Edge Function deployment/secrets, an app icon and native splash image, and device QA. Automated tests and full offline reconciliation are not included.
 - Appearance supports the Sellora, Ocean, Emerald, Purple, Midnight, Sunset and Monochrome palettes, each in system, light and dark modes.
@@ -154,8 +155,9 @@ Keep feature-specific screen logic inside its route. Put reused UI in `component
 
 - Supabase Auth owns passwords; sessions and PIN verifiers use Expo SecureStore.
 - Profile, branch, inventory and sales access use PostgreSQL row-level security. Screen permission checks control visibility but are not the security boundary.
-- The PIN unlocks the saved Supabase session on that device; password sign-in is required after signing out or resetting a PIN.
-- SQLite keeps exchange rates, cached POS catalogue/warehouse snapshots and queued offline sales. Database retries are idempotent; failed sales remain visible for staff review.
-- Copilot requires deployment of its Supabase Edge Function and server-only OpenAI secret. Backup export includes customer and employee data and must be shared securely.
-- A production app icon and branded native launch image are still needed before store submission. Migrations and Edge Functions must be deployed to a Supabase project before these modules can run.
-- Apply the migrations to a new project, or review them before applying to a project with existing tables or types.
+- A configured device PIN is required again after Sellora leaves the foreground. It unlocks the saved session on that device; it is not an account password or a second server-side factor.
+- SQLite payloads for customer, sales-agent, product, warehouse, and offline sale caches use AES-256-GCM. The random encryption key stays in Expo SecureStore, and older plaintext cache rows are encrypted on app startup. If the key is lost, unsynced local records cannot be recovered; sync them before device migration or reinstall.
+- Copilot verifies the Supabase JWT, account approval, and role permission on the server. Its Edge Function still needs deployment and the `OPENAI_API_KEY` must only be configured as a Supabase secret; never add a service-role or OpenAI key to the mobile `.env`.
+- Backup export is restricted to approved administrators and contains customer and employee data. Share exports only through a trusted channel and keep routine Supabase project backups enabled.
+- A production app icon and branded native launch image are still needed before store submission. Apply and review migrations, deploy Edge Functions and secrets, and run device QA against the target Supabase project before release.
+- Apply migrations to a new project, or review their assumptions and existing policies before applying to a project with existing tables or types. This repository does not include a live-project security audit or automated database policy tests.

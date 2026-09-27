@@ -1,4 +1,5 @@
-import { createContext, useContext, useEffect, useState, type PropsWithChildren } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type PropsWithChildren } from 'react';
+import { AppState } from 'react-native';
 import type { Session } from '@supabase/supabase-js';
 import type { UserProfile } from '@/types/auth';
 import { getMyProfile } from '@/services/auth';
@@ -18,6 +19,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [permissionCodes, setPermissionCodes] = useState<string[]>([]);
   const [locked, setLocked] = useState(false);
+  const sessionRef = useRef<Session | null>(null);
+  const hasPinRef = useRef(false);
 
   async function reloadProfile() {
     if (!supabase) { setProfile(null); setPermissionCodes([]); return null; }
@@ -59,24 +62,32 @@ export function AuthProvider({ children }: PropsWithChildren) {
     }
     Linking.getInitialURL().then((url) => { if (url) void handleAuthLink(url); }).catch(() => {});
     const linkListener = Linking.addEventListener('url', ({ url }) => { void handleAuthLink(url); });
+    // Hide protected routes when a PIN-enabled session leaves the foreground.
+    const appStateListener = AppState.addEventListener('change', (nextState) => {
+      if (nextState !== 'active' && sessionRef.current && hasPinRef.current) setLocked(true);
+    });
     supabase.auth.getSession().then(async ({ data }) => {
       if (!active) return;
+      sessionRef.current = data.session;
       setSession(data.session);
       if (data.session) {
         await reloadProfile();
-        if (active) setLocked(await hasDevicePin(data.session.user.id));
+        hasPinRef.current = await hasDevicePin(data.session.user.id);
+        if (active) setLocked(hasPinRef.current);
       }
       if (active) setReady(true);
     });
     const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      sessionRef.current = nextSession;
       setSession(nextSession);
-      if (!nextSession) { setProfile(null); setPermissionCodes([]); setLocked(false); }
+      if (!nextSession) { hasPinRef.current = false; setProfile(null); setPermissionCodes([]); setLocked(false); }
       else {
         if (event === 'SIGNED_IN') setLocked(false);
+        void hasDevicePin(nextSession.user.id).then((hasPin) => { hasPinRef.current = hasPin; }).catch(() => {});
         setTimeout(() => { void reloadProfile(); }, 0);
       }
     });
-    return () => { active = false; listener.subscription.unsubscribe(); linkListener.remove(); };
+    return () => { active = false; listener.subscription.unsubscribe(); linkListener.remove(); appStateListener.remove(); };
   }, []);
 
   return <AuthContext.Provider value={{ ready, session, profile, permissionCodes, locked, unlock: () => setLocked(false), reloadProfile }}>{children}</AuthContext.Provider>;
