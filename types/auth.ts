@@ -13,4 +13,5 @@ export type UserProfile = {
   approval_status: ApprovalStatus;
   date_of_birth: string | null;
   avatar_storage_path: string | null;
+  primary_branch_id: string | null;
 };

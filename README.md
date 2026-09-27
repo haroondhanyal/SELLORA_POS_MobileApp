@@ -1,59 +1,92 @@
 # Sellora Mobile
 
-Expo + React Native + TypeScript mobile application for Android and iOS. Screens are separate files in `app/`; shared UI, services, theme tokens, local database and auth state each have their own folders.
+Expo + React Native + TypeScript application for Android and iOS. Each major feature has its own Expo Router screen. Shared UI, app state, Supabase services, theme tokens and SQLite live in separate folders.
 
 ## Current scope
 
-This workspace started empty, so no earlier app code could be audited or reused. Phases 1-3 now include separate Expo Router screens, a Sellora branded launch/welcome flow, shared theme tokens/provider, Expo SQLite startup tables, environment-based Supabase setup, signup/login with password confirmation and role checks, secure signup/device PIN setup and reset, password recovery, role requests, phone country code, date of birth, profile photo upload, administrator approval and suspension, role permission management, profile editing, and an online/offline status sheet. Branch inventory, POS and offline transaction sync belong to later phases.
+Phases 1–7 include Sellora launch/welcome branding; theme and SQLite foundations; Supabase signup, login, recovery, PIN and approval; role and branch access; products, categories, brands, variants, barcode scanning and inventory adjustments; customers, POS, split payments and receipts; PKR/USD display conversion; branches, warehouses, transfers, suppliers, purchase orders and goods-received notes.
+
+Offline transaction synchronization, returns, refunds, reporting and other later modules remain future phases.
 
 ## Run locally
 
-1. Install Node.js 22.13+ and a supported Android/iOS simulator or Expo Go.
+1. Install Node.js 22.13+ and an Android/iOS simulator or Expo Go.
 2. Run `npm install`.
 3. Copy `.env.example` to `.env` and set the Supabase project URL and public anon/publishable key.
-4. In Supabase SQL Editor or Supabase CLI, apply both migrations in timestamp order: `202609270001_foundation_auth_profiles.sql`, then `202609270002_profiles_roles_connection.sql`.
+4. Apply every SQL migration in timestamp order using Supabase SQL Editor or Supabase CLI:
+
+   - `202609270001_foundation_auth_profiles.sql`
+   - `202609270002_profiles_roles_connection.sql`
+   - `202609270003_catalog_inventory.sql`
+   - `202609270004_pos_sales.sql`
+   - `202609270005_currency.sql`
+   - `202609270006_advanced_inventory.sql`
+
 5. Enable email authentication in Supabase. Add `sellora://auth/pending-approval` and `sellora://auth/reset-password` to the allowed redirect URLs.
-6. Run `npx expo install --fix` once so Expo aligns native package versions with SDK 57, then start with `npx expo start`; use `a` for Android or `i` for iOS.
+6. Run `npx expo start`; press `a` for Android or `i` for iOS.
+7. Run `npm run typecheck` to check TypeScript errors.
 
-## First administrator
+## First administrator and store setup
 
-Self-signup always creates a **pending cashier** profile, while the requested role is stored separately for the admin to review. It cannot grant admin access. Create the first user through signup, then promote that profile to `admin` and `approved` in the Supabase dashboard as project owner. The seeded role-permission rows include user and role management for admins. After that, approved admins can choose roles, process requests, suspend accounts and edit role permissions in the app. Never ship a service-role key in the mobile app.
+Self-signup always creates a pending cashier profile; a requested role is stored separately for review. Create the first account through signup, then promote it to `admin` and `approved` in Supabase as project owner. Never ship a service-role key in the mobile app.
+
+After the first admin signs in:
+
+1. Create a branch from **Branches**.
+2. Create a warehouse from **Warehouses** and mark it primary.
+3. Open **Manage users & approvals** and assign the admin account and other users their primary and allowed branches.
+4. Choose the PKR or USD business base currency before creating products. The database locks this setting after products or sales exist to protect stored amounts.
+5. Create categories, brands, products and opening stock. After that, staff with permissions can use POS, receive purchases and transfer stock.
+
+## Phases 4–7
+
+- **Phase 4 — Products & inventory:** separate catalogue, category, brand, variant, barcode, stock and adjustment screens. Product photos use private Supabase Storage. Stock adjustments update inventory and create a reason record in one database transaction.
+- **Phase 5 — POS:** separate product selection, cart, payment and receipt screens. Branch customers and approved sales agents are selectable. A single database function prices the sale, validates stock/credit, deducts inventory and writes the receipt, line items, payments and stock movements atomically.
+- **Phase 6 — Currency:** the business has one base currency; each device can display PKR or USD. Current daily exchange rates and admin manual rates are cached in SQLite for offline viewing. Changing display currency never rewrites product amounts or historical receipts.
+- **Phase 7 — Advanced inventory:** admin branch and warehouse setup, user branch access, supplier records, stock-transfer states and purchase orders. Receiving a delivery creates a goods-received note and adds stock atomically.
 
 ## Structure
 
 ```text
-app/                 Expo Router screens (one primary screen per file)
+app/                 Expo Router screens, one primary feature screen per file
 app/auth/            Login, signup, recovery, PIN and approval screens
-app/dashboard/       Authenticated landing screen
-app/users/           Admin user-request screen
-app/roles/           Admin role-permission editor
-app/profile/         Profile, photo and local PIN settings
-components/          Small reusable UI components
-providers/           Shared authenticated session/profile state
-services/            Supabase auth and permission helpers
-supabase/migrations/ Rebuildable PostgreSQL schema and security policies
-theme/               Shared colors, type sizes, spacing and radius
+app/products/        Catalogue, categories, brands, variants and barcode
+app/inventory/       Stock, adjustments and adjustment history
+app/pos/             Product selection, cart, payments and receipt
+app/customers/       Branch customer search and entry
+app/branches/        Branch setup and assignment entry point
+app/warehouses/      Warehouse and manager setup
+app/transfers/       Inter-branch stock transfer workflow
+app/purchases/       Purchase orders and goods-received notes
+app/suppliers/       Branch supplier records
+app/settings/        Currency settings and rates
+components/          Reused native UI fields, cards and buttons
+providers/           Shared authentication, connection, currency and cart state
+services/            Supabase, local database and business logic
+supabase/migrations/ Rebuildable PostgreSQL schema and row-level security
+theme/               Shared palette, typography, spacing and radius
 assets/branding/     Editable Sellora SVG wordmark
 types/               Shared TypeScript types
 ```
 
 ## Screen ownership for parallel development
 
-Each screen is an independent route file. Several developers can work in parallel by assigning one group below to each person and agreeing on any shared component changes first:
+Each group can be assigned to a different developer. Agree before editing a shared component or migration.
 
-- **Auth:** `app/auth/` plus `app/splash.tsx` and `app/welcome.tsx`
-- **Account:** `app/profile/` and shared profile/photo inputs in `components/`
-- **Admin users:** `app/users/` and `components/RolePicker.tsx`
-- **Admin roles:** `app/roles/`
-- **Home and app shell:** `app/dashboard/`, `app/_layout.tsx`, `components/AppHeader.tsx`
-- **Platform services:** `providers/`, `services/`, `supabase/migrations/`
+- **Auth:** `app/auth/`, `app/splash.tsx`, `app/welcome.tsx`
+- **Account:** `app/profile/` and shared profile inputs in `components/`
+- **Admin users and roles:** `app/users/`, `app/roles/`, `components/RolePicker.tsx`
+- **Products and inventory:** `app/products/`, `app/inventory/`, `services/catalog.ts`, `services/inventory.ts`
+- **POS and customers:** `app/pos/`, `app/customers/`, `services/pos.ts`, `services/customers.ts`
+- **Currency and operations:** `app/settings/`, `app/branches/`, `app/warehouses/`, `app/transfers/`, `app/purchases/`, `app/suppliers/`
+- **Platform:** `providers/`, `services/`, `supabase/migrations/`
 
-Keep feature-specific screen logic inside its route. Put only reused UI in `components/`, database/auth work in `services/`, and cross-screen state in `providers/`. Brief comments above screens and important helpers explain their responsibility; use small named functions when changing a screen so the flow stays easy to follow.
+Keep feature-specific screen logic inside its route. Put reused UI in `components/`, database work in `services/`, and cross-screen state in `providers/`. Brief comments above screens and key helpers explain their responsibility.
 
-## Security and remaining phases
+## Security and remaining work
 
-- Supabase Auth owns passwords; sessions use Expo SecureStore.
-- Profile reads and admin approval are protected by PostgreSQL RLS. UI checks only control visibility and are not the security boundary.
-- Device PIN is a salted verifier in SecureStore, never the PIN itself. It unlocks the Supabase session saved on that device; password sign-in is required after signing out or resetting a PIN.
-- Offline/online mode and the local sync queue are initialized, but transaction caching and synchronization arrive in the offline phase. Branch assignment, POS, inventory, a production app icon and a branded native launch image are later work.
-- Apply the migration to a new project or review it before applying to a project with existing tables/types.
+- Supabase Auth owns passwords; sessions and PIN verifiers use Expo SecureStore.
+- Profile, branch, inventory and sales access use PostgreSQL row-level security. Screen permission checks control visibility but are not the security boundary.
+- The PIN unlocks the saved Supabase session on that device; password sign-in is required after signing out or resetting a PIN.
+- The online/offline selector and SQLite queue are initialized, but transaction caching and synchronization are later work. A production app icon and branded native launch image are also still needed before store submission.
+- Apply the migrations to a new project, or review them before applying to a project with existing tables or types.

@@ -34,7 +34,7 @@ export async function getMyProfile() {
   const client = requireSupabase();
   const { data: { user } } = await client.auth.getUser();
   if (!user) return null;
-  const { data, error } = await client.from('profiles').select('id, full_name, email, phone, role, requested_role, approval_status, date_of_birth, avatar_storage_path').eq('id', user.id).maybeSingle();
+  const { data, error } = await client.from('profiles').select('id, full_name, email, phone, role, requested_role, approval_status, date_of_birth, avatar_storage_path, primary_branch_id').eq('id', user.id).maybeSingle();
   if (error) throw error;
   return data;
 }

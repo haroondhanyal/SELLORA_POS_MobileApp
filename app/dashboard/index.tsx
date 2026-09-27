@@ -31,6 +31,13 @@ export default function DashboardScreen() {
 
   const showUserManagement = canManageUsers(profile, permissionCodes);
   const showRoleManagement = canManageRoles(profile, permissionCodes);
+  const canViewProducts = permissionCodes.includes('products.view') || permissionCodes.includes('products.manage');
+  const canViewInventory = permissionCodes.includes('inventory.view') || permissionCodes.includes('inventory.manage');
+  const canCreateSales = permissionCodes.includes('sales.create');
+  const canViewCustomers = permissionCodes.includes('customers.view') || permissionCodes.includes('customers.manage');
+  const canManageInventory = permissionCodes.includes('inventory.manage');
+  const canManageBranches = permissionCodes.includes('branches.manage');
+  const canManageWarehouses = permissionCodes.includes('warehouses.manage');
 
   return (
     <Screen>
@@ -38,7 +45,7 @@ export default function DashboardScreen() {
         <AppHeader profile={profile} />
         <Text style={styles.hello}>Hello, {profile.full_name || 'there'}.</Text>
         <Text style={styles.body}>
-          Your Sellora workspace is ready. Product, POS and inventory modules are the next phase.
+          Your Sellora workspace is ready. Open the modules your role can use below.
         </Text>
 
         <View style={styles.card}>
@@ -53,6 +60,16 @@ export default function DashboardScreen() {
         {showRoleManagement ? (
           <AppButton title="Manage role permissions" onPress={() => router.push('/roles')} />
         ) : null}
+        {canCreateSales ? <AppButton title="Open point of sale" onPress={() => router.push('/pos')} /> : null}
+        {canViewProducts ? <AppButton title="Products & catalogue" onPress={() => router.push('/products')} secondary /> : null}
+        {canViewInventory ? <AppButton title="View inventory" onPress={() => router.push('/inventory')} secondary /> : null}
+        {canViewCustomers ? <AppButton title="Customers" onPress={() => router.push('/customers')} secondary /> : null}
+        {canManageBranches ? <AppButton title="Branches" onPress={() => router.push('/branches')} secondary /> : null}
+        {canManageWarehouses ? <AppButton title="Warehouses" onPress={() => router.push('/warehouses')} secondary /> : null}
+        {canManageInventory ? <AppButton title="Suppliers" onPress={() => router.push('/suppliers')} secondary /> : null}
+        {canManageInventory ? <AppButton title="Stock transfers" onPress={() => router.push('/transfers')} secondary /> : null}
+        {canManageInventory ? <AppButton title="Purchases & GRNs" onPress={() => router.push('/purchases')} secondary /> : null}
+        <AppButton title="Currency settings" onPress={() => router.push('/settings/currency')} secondary />
         <AppButton title="Edit profile & PIN" onPress={() => router.push('/profile')} secondary />
 
         <View style={styles.bottom}>

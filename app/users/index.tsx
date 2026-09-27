@@ -12,9 +12,12 @@ import {
 import { Redirect } from 'expo-router';
 import { AppHeader } from '@/components/AppHeader';
 import { RolePicker } from '@/components/RolePicker';
+import { OptionPicker } from '@/components/OptionPicker';
+import { AppButton } from '@/components/AppButton';
 import { Screen } from '@/components/Screen';
 import { useAuth } from '@/providers/AuthProvider';
 import { canManageUsers } from '@/services/permissions';
+import { assignUserBranches, listBranches, type Branch } from '@/services/branches';
 import { requireSupabase } from '@/services/supabase';
 import { colors } from '@/theme/colors';
 import type { ApprovalStatus, UserProfile, UserRole } from '@/types/auth';
@@ -29,6 +32,8 @@ export default function UsersScreen() {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [roles, setRoles] = useState<Record<string, UserRole>>({});
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [branchAssignments, setBranchAssignments] = useState<Record<string, string[]>>({});
   const [filter, setFilter] = useState<StatusFilter>('pending');
 
   const hasUserAccess = canManageUsers(profile, permissionCodes);
@@ -42,12 +47,29 @@ export default function UsersScreen() {
     try {
       const { data, error } = await requireSupabase()
         .from('profiles')
-        .select('id, full_name, email, phone, role, requested_role, approval_status, date_of_birth, avatar_storage_path')
+        .select('id, full_name, email, phone, role, requested_role, approval_status, date_of_birth, avatar_storage_path, primary_branch_id')
         .eq('approval_status', filter)
         .order('created_at');
 
       if (error) throw error;
-      setUsers((data ?? []) as UserProfile[]);
+      const loadedUsers = (data ?? []) as UserProfile[];
+      setUsers(loadedUsers);
+      if (profile?.role === 'admin') {
+        const [branchOptions, assignmentResult] = await Promise.all([
+          listBranches(),
+          requireSupabase().from('user_branches').select('user_id, branch_id').in('user_id', loadedUsers.map((user) => user.id)),
+        ]);
+        if (assignmentResult.error) throw assignmentResult.error;
+        setBranches(branchOptions);
+        const assignments: Record<string, string[]> = {};
+        (assignmentResult.data ?? []).forEach((row) => { assignments[row.user_id] = [...(assignments[row.user_id] ?? []), row.branch_id]; });
+        loadedUsers.forEach((user) => {
+          if (user.primary_branch_id && !assignments[user.id]?.includes(user.primary_branch_id)) {
+            assignments[user.id] = [...(assignments[user.id] ?? []), user.primary_branch_id];
+          }
+        });
+        setBranchAssignments(assignments);
+      }
     } catch (error) {
       Alert.alert(
         'Could not load users',
@@ -142,6 +164,10 @@ export default function UsersScreen() {
           currentUserId={profile?.id}
           selectedRole={roles[item.id]}
           canGrantAdminRole={canGrantAdminRole}
+          canAssignBranches={canGrantAdminRole}
+          branches={branches}
+          assignedBranches={branchAssignments[item.id] ?? (item.primary_branch_id ? [item.primary_branch_id] : [])}
+          onBranchesSaved={loadUsers}
           onRoleChange={(role) => setUserRole(item.id, role)}
           onApprove={() => updateAccess(item, 'approved')}
           onReject={() => updateAccess(item, 'rejected')}
@@ -160,6 +186,10 @@ function UserCard({
   currentUserId,
   selectedRole,
   canGrantAdminRole,
+  canAssignBranches,
+  branches,
+  assignedBranches,
+  onBranchesSaved,
   onRoleChange,
   onApprove,
   onReject,
@@ -171,6 +201,10 @@ function UserCard({
   currentUserId?: string;
   selectedRole?: UserRole;
   canGrantAdminRole: boolean;
+  canAssignBranches: boolean;
+  branches: Branch[];
+  assignedBranches: string[];
+  onBranchesSaved: () => Promise<void>;
   onRoleChange: (role: UserRole) => void;
   onApprove: () => void;
   onReject: () => void;
@@ -209,6 +243,10 @@ function UserCard({
         </>
       ) : null}
 
+      {canAssignBranches ? (
+        <BranchAccessEditor user={user} branches={branches} assignedBranches={assignedBranches} onSaved={onBranchesSaved} />
+      ) : null}
+
       {filter === 'approved' && canEditThisUser ? (
         <>
           <RolePicker
@@ -229,6 +267,48 @@ function UserCard({
           <ActionButton title="Restore account" onPress={onRestore} />
         </View>
       ) : null}
+    </View>
+  );
+}
+
+/** Lets an administrator choose primary and allowed branches before activating a user. */
+function BranchAccessEditor({ user, branches, assignedBranches, onSaved }: {
+  user: UserProfile;
+  branches: Branch[];
+  assignedBranches: string[];
+  onSaved: () => Promise<void>;
+}) {
+  const [selected, setSelected] = useState(assignedBranches);
+  const [primary, setPrimary] = useState<string | null>(user.primary_branch_id);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { setSelected(assignedBranches); setPrimary(user.primary_branch_id); }, [assignedBranches.join(','), user.primary_branch_id]);
+
+  function toggleBranch(branchId: string) {
+    setSelected((current) => current.includes(branchId)
+      ? current.filter((id) => id !== branchId)
+      : [...current, branchId]);
+    if (primary === branchId) setPrimary(null);
+  }
+
+  async function save() {
+    if (primary && !selected.includes(primary)) {
+      Alert.alert('Choose an allowed branch', 'The primary branch must also be in the allowed branch list.');
+      return;
+    }
+    setBusy(true);
+    try { await assignUserBranches(user.id, primary, selected); await onSaved(); }
+    catch (error) { Alert.alert('Could not save branch access', error instanceof Error ? error.message : 'Please try again.'); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <View style={styles.branchEditor}>
+      <Text style={styles.requested}>Branch access</Text>
+      <OptionPicker label="Primary branch" value={primary} options={branches.map((branch) => ({ id: branch.id, label: `${branch.name} · ${branch.code}` }))} onChange={setPrimary} allowNone />
+      {branches.map((branch) => <Pressable key={branch.id} onPress={() => toggleBranch(branch.id)} style={styles.branchRow}>
+        <Text style={styles.body}>{selected.includes(branch.id) ? '☑' : '□'}  {branch.name}</Text>
+      </Pressable>)}
+      <AppButton title="Save branch access" onPress={save} busy={busy} secondary />
     </View>
   );
 }
@@ -262,4 +342,6 @@ const styles = StyleSheet.create({
   approveText: { color: 'white', fontWeight: '700' },
   rejectText: { color: colors.danger, fontWeight: '700' },
   empty: { color: colors.muted, textAlign: 'center', marginTop: 50 },
+  branchEditor: { marginTop: 18, paddingTop: 14, borderTopWidth: 1, borderTopColor: colors.border },
+  branchRow: { paddingVertical: 7 },
 });
