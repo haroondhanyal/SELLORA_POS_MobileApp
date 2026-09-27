@@ -6,7 +6,17 @@
 
 <p align="center"><strong>Sell Smarter. Manage Anywhere.</strong><br/>Mobile retail, point of sale and inventory management for Android and iOS.</p>
 
-Expo + React Native + TypeScript application for Android and iOS. Each major feature has its own Expo Router screen. Shared UI, app state, Supabase services, theme tokens and SQLite live in separate folders.
+Sellora is a modern mobile-first Point of Sale and retail operations platform built with React Native, Expo, and TypeScript for Android and iOS. Designed for growing retail businesses, Sellora combines sales, inventory, workforce, customer, branch, purchasing, reporting, and offline operations in one secure application.
+
+The platform provides role-based access for administrators, managers, sales agents, cashiers, inventory teams, accountants, and other authorized users. New users can register, request roles, manage profiles, use password or PIN-based access, and receive approval before gaining access to protected business features. Administrators can control users, branches, permissions, roles, and operational access.
+
+Sellora includes product and inventory management, categories, brands, variants, barcode support, product images, stock adjustments, warehouses, suppliers, purchase orders, goods-received notes, and inter-branch stock transfers. Its POS flow includes product selection, cart management, customer and sales-agent assignment, multiple payments, receipt generation, returns, refunds, credit handling, loyalty points, expenses, shifts, targets, commissions, approvals, notifications, reports, and audit tracking.
+
+The application supports PKR and USD display currencies while preserving original transaction values. Supabase powers authentication, PostgreSQL data, secure storage, realtime-ready services, and backend functions, while SQLite supports cached products, offline sales, queued transactions, and synchronization.
+
+Sellora also includes an AI retail copilot for business insights, backup export, branch-level reporting, sales-agent performance tracking, and secure row-level access controls. With separate screens for every major module, reusable native components, structured services, and a scalable database architecture, Sellora is designed to evolve from a mobile POS into a complete retail management ecosystem for supermarkets, electronics stores, fashion outlets, general retailers, and multi-branch businesses. Its architecture emphasizes transaction integrity, authentication, atomic stock updates, offline resilience, configurable currency handling, and maintainable code. The modular design also prepares the product for future enhancements such as analytics, realtime collaboration, reconciliation, integrations, and enterprise deployment.
+
+This Expo + React Native + TypeScript application uses separate Expo Router screens for each major feature. Shared UI, app state, Supabase services, theme tokens, and SQLite live in separate folders.
 
 ## Current scope
 
