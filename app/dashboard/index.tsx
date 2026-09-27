@@ -38,6 +38,7 @@ export default function DashboardScreen() {
   const canManageInventory = permissionCodes.includes('inventory.manage');
   const canManageBranches = permissionCodes.includes('branches.manage');
   const canManageWarehouses = permissionCodes.includes('warehouses.manage');
+  const canViewExpenses = permissionCodes.includes('expenses.view') || permissionCodes.includes('expenses.manage');
 
   return (
     <Screen>
@@ -69,6 +70,19 @@ export default function DashboardScreen() {
         {canManageInventory ? <AppButton title="Suppliers" onPress={() => router.push('/suppliers')} secondary /> : null}
         {canManageInventory ? <AppButton title="Stock transfers" onPress={() => router.push('/transfers')} secondary /> : null}
         {canManageInventory ? <AppButton title="Purchases & GRNs" onPress={() => router.push('/purchases')} secondary /> : null}
+        {permissionCodes.includes('returns.manage') ? <AppButton title="Returns & refunds" onPress={() => router.push('/returns')} secondary /> : null}
+        {canViewExpenses ? <AppButton title="Expenses" onPress={() => router.push('/expenses')} secondary /> : null}
+        {permissionCodes.includes('customers.credit.manage') ? <AppButton title="Customer credit payments" onPress={() => router.push('/customers/payments')} secondary /> : null}
+        {permissionCodes.includes('shifts.manage') ? <AppButton title="My shift & cash drawer" onPress={() => router.push('/shifts')} secondary /> : null}
+        {permissionCodes.includes('targets.manage') || permissionCodes.includes('sales.view_own') ? <AppButton title="Sales targets" onPress={() => router.push('/targets')} secondary /> : null}
+        {permissionCodes.includes('commissions.view') ? <AppButton title="Commissions" onPress={() => router.push('/commissions')} secondary /> : null}
+        {permissionCodes.includes('approvals.view') ? <AppButton title="Review approvals" onPress={() => router.push('/approvals')} secondary /> : null}
+        {permissionCodes.includes('approvals.request') ? <AppButton title="Request approval" onPress={() => router.push('/approvals/request')} secondary /> : null}
+        {permissionCodes.includes('notifications.view') ? <AppButton title="Notifications" onPress={() => router.push('/notifications')} secondary /> : null}
+        {permissionCodes.includes('reports.view') || permissionCodes.includes('audit.view') ? <AppButton title="Reports & audit" onPress={() => router.push('/reports')} secondary /> : null}
+        <AppButton title="Offline & sync queue" onPress={() => router.push('/settings/sync')} secondary />
+        {permissionCodes.includes('reports.view') || permissionCodes.includes('sales.view_own') ? <AppButton title="Sellora Copilot" onPress={() => router.push('/ai')} secondary /> : null}
+        {profile.role === 'admin' ? <AppButton title="Business backup" onPress={() => router.push('/settings/backup')} secondary /> : null}
         <AppButton title="Currency settings" onPress={() => router.push('/settings/currency')} secondary />
         <AppButton title="Edit profile & PIN" onPress={() => router.push('/profile')} secondary />
 

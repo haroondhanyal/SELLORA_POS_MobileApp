@@ -97,6 +97,15 @@ export async function listBranchSalesAgents(branchId: string) {
   return (data ?? []) as { id: string; full_name: string }[];
 }
 
+/** Posts a payment against one customer's outstanding balance. */
+export async function receiveCustomerCreditPayment(input: { customerId: string; amount: number; method: string; reference: string }) {
+  const { data, error } = await requireSupabase().rpc('sellora_receive_customer_payment', {
+    p_customer_id: input.customerId, p_amount: input.amount, p_method: input.method, p_reference: input.reference,
+  });
+  if (error) throw error;
+  return data as string;
+}
+
 /** Reads one transaction with its immutable line, payment and base-currency snapshots. */
 export async function getSaleReceipt(saleId: string) {
   const client = requireSupabase();

@@ -5,6 +5,62 @@ export type StockTransfer = { id: string; transfer_number: string; from_branch_i
 export type PurchaseOrder = { id: string; order_number: string; branch_id: string; warehouse_id: string; supplier_id: string; status: string; total_cost: number; note: string; created_at: string };
 export type PurchaseOrderItem = { id: string; product_id: string; variant_id: string | null; ordered_quantity: number; received_quantity: number; unit_cost: number; products?: { name: string; sku: string } | null };
 
+/** Sale line snapshots shown when a cashier processes a return. */
+export type ReturnableSaleItem = { id: string; product_name: string; sku: string; quantity: number; unit_price: number; line_total: number; returned_quantity: number };
+
+/** Looks up a sale by receipt and adds already-returned quantities to each item. */
+export async function getReturnableSale(receiptNumber: string) {
+  const client = requireSupabase();
+  const { data: sale, error } = await client.from('sales').select('id,receipt_number,branch_id,status,customer_id,created_at').eq('receipt_number', receiptNumber.trim()).single();
+  if (error) throw error;
+  const { data: items, error: itemsError } = await client.from('sale_items').select('id,product_name,sku,quantity,unit_price,line_total').eq('sale_id', sale.id);
+  if (itemsError) throw itemsError;
+  const { data: returns, error: returnsError } = await client.from('sales_return_items').select('sale_item_id,quantity,sales_returns!inner(sale_id)').eq('sales_returns.sale_id', sale.id);
+  if (returnsError) throw returnsError;
+  const returned = new Map<string, number>();
+  for (const row of returns ?? []) returned.set(row.sale_item_id, (returned.get(row.sale_item_id) ?? 0) + Number(row.quantity));
+  return { sale, items: (items ?? []).map((item) => ({ ...item, returned_quantity: returned.get(item.id) ?? 0 })) as ReturnableSaleItem[] };
+}
+
+/** Records a refund and restores inventory through one permission-checked transaction. */
+export async function processSaleReturn(input: { saleId: string; items: { sale_item_id: string; quantity: number }[]; reason: string; refundMethod: string }) {
+  const { data, error } = await requireSupabase().rpc('sellora_process_return', {
+    p_sale_id: input.saleId, p_items: input.items, p_reason: input.reason, p_refund_method: input.refundMethod,
+  });
+  if (error) throw error;
+  return data as string;
+}
+
+/** Reads recent branch refunds for the return history screen. */
+export async function listSalesReturns(branchId: string) {
+  const { data, error } = await requireSupabase().from('sales_returns')
+    .select('id,return_number,sale_id,reason,refund_method,refund_total,created_at,sales(receipt_number)')
+    .eq('branch_id', branchId).order('created_at', { ascending: false }).limit(100);
+  if (error) throw error;
+  return data ?? [];
+}
+
+/** Records a branch expense. Database permissions enforce branch and author access. */
+export async function createExpense(input: { branchId: string; category: string; description: string; amount: number; method: string }) {
+  const client = requireSupabase();
+  const { data: { user } } = await client.auth.getUser();
+  if (!user) throw new Error('Sign in before recording an expense.');
+  const { error } = await client.from('expenses').insert({
+    branch_id: input.branchId, category: input.category, description: input.description.trim(),
+    amount: input.amount, payment_method: input.method, created_by: user.id,
+  });
+  if (error) throw error;
+}
+
+/** Lists recent expenses in a branch visible to the current role. */
+export async function listExpenses(branchId: string) {
+  const { data, error } = await requireSupabase().from('expenses')
+    .select('id,category,description,amount,payment_method,created_at').eq('branch_id', branchId)
+    .order('created_at', { ascending: false }).limit(100);
+  if (error) throw error;
+  return data ?? [];
+}
+
 /** Reads suppliers available in one assigned branch. */
 export async function listSuppliers(branchId: string) {
   const { data, error } = await requireSupabase().from('suppliers').select('id, branch_id, name, company_name, phone, email, address, is_active').eq('branch_id', branchId).eq('is_active', true).order('name');
