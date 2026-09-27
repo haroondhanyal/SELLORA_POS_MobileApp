@@ -3,7 +3,7 @@ import Svg, { Path, Rect } from 'react-native-svg';
 import { colors } from '@/theme/colors';
 import { useTheme } from '@/theme/ThemeProvider';
 
-/** Small text-first brand mark used until official logo assets are supplied. */
+/** Reusable SVG brand mark that matches the native icon and splash assets. */
 export function Brand({ compact = false }: { compact?: boolean }) {
   const theme = useTheme();
   const markSize = compact ? 36 : 52;

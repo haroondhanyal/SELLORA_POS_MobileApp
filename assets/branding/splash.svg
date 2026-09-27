@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="832" height="192" viewBox="0 0 416 96" fill="none">
+  <rect x="8" y="8" width="80" height="80" rx="25" fill="#19A88A"/>
+  <path d="M31 39h34l3 29H28l3-29Z" fill="#fff"/>
+  <path d="M39 40v-6a9 9 0 0 1 18 0v6" stroke="#fff" stroke-width="4" stroke-linecap="round"/>
+  <path d="M53 47c-9-4-15 5-6 9l8 3c8 3 4 13-4 13-5 0-8-2-10-4" stroke="#12806C" stroke-width="4" stroke-linecap="round"/>
+  <text x="112" y="50" fill="#fff" font-family="Arial, sans-serif" font-size="34" font-weight="800" letter-spacing="3">SELLORA</text>
+  <text x="114" y="74" fill="#AAB9C0" font-family="Arial, sans-serif" font-size="14" letter-spacing=".5">Sell Smarter. Manage Anywhere.</text>
+</svg>

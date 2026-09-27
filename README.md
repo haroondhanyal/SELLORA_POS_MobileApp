@@ -46,7 +46,7 @@ Phase 11 stores offline customers and sales, caches branch stock for read-only i
    - `202609270013_copilot_rate_limit.sql`
 
 5. Enable email authentication in Supabase. Add `sellora://auth/pending-approval` and `sellora://auth/reset-password` to the allowed redirect URLs.
-6. Run `npx expo start`; press `a` for Android or `i` for iOS.
+6. Run `npx expo start` for Expo Go. To build the configured native icon, splash screen and system appearance into a development app, use `npm run native:android` or `npm run native:ios` on a machine with the required Android SDK or Xcode.
 7. Run `npm run typecheck` to check TypeScript errors.
 
 ## First administrator and store setup
@@ -100,7 +100,7 @@ After the first admin signs in:
 
 - Sellora Copilot is a Supabase Edge Function. It checks the caller's JWT, approval and role permission, reads through the caller's RLS-limited session, and allows up to 20 questions per user per hour. It sends no customer names or profile data to the AI provider. Configure `OPENAI_API_KEY` and optionally `SELLORA_AI_MODEL` as Edge Function secrets, then deploy `sellora-ai-copilot`.
 - Approved admins can export a JSON snapshot through a database function and the native share sheet. Exports include sensitive employee/customer records; storage images are not part of the snapshot. Keep routine Supabase backups enabled as well.
-- Production release still requires real Supabase credentials, applying and reviewing all migrations, Edge Function deployment/secrets, an app icon and native splash image, and device QA. Automated tests and full offline reconciliation are not included.
+- Production release still requires real Supabase credentials, applying and reviewing all migrations, Edge Function deployment/secrets, and Android/iOS device QA. Automated tests and full offline reconciliation are not included.
 - Appearance supports the Sellora, Ocean, Emerald, Purple, Midnight, Sunset and Monochrome palettes, each in system, light and dark modes.
 
 ## Structure
@@ -133,7 +133,7 @@ providers/           Shared authentication, connection, currency and cart state
 services/            Supabase, local database and business logic
 supabase/migrations/ Rebuildable PostgreSQL schema and row-level security
 theme/               Shared palette, typography, spacing and radius
-assets/branding/     Editable Sellora SVG wordmark
+assets/branding/     Sellora SVG source plus native app icon and splash PNGs
 types/               Shared TypeScript types
 ```
 
@@ -159,5 +159,5 @@ Keep feature-specific screen logic inside its route. Put reused UI in `component
 - SQLite payloads for customer, sales-agent, product, warehouse, and offline sale caches use AES-256-GCM. The random encryption key stays in Expo SecureStore, and older plaintext cache rows are encrypted on app startup. If the key is lost, unsynced local records cannot be recovered; sync them before device migration or reinstall.
 - Copilot verifies the Supabase JWT, account approval, and role permission on the server. Its Edge Function still needs deployment and the `OPENAI_API_KEY` must only be configured as a Supabase secret; never add a service-role or OpenAI key to the mobile `.env`.
 - Backup export is restricted to approved administrators and contains customer and employee data. Share exports only through a trusted channel and keep routine Supabase project backups enabled.
-- A production app icon and branded native launch image are still needed before store submission. Apply and review migrations, deploy Edge Functions and secrets, and run device QA against the target Supabase project before release.
+- Branded app icon and native launch image are configured from `assets/branding/`. Apply and review migrations, deploy Edge Functions and secrets, then build and run device QA against the target Supabase project before release.
 - Apply migrations to a new project, or review their assumptions and existing policies before applying to a project with existing tables or types. This repository does not include a live-project security audit or automated database policy tests.

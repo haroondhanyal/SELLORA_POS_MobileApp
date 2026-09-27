@@ -4,11 +4,24 @@
     "slug": "sellora-mobile",
     "scheme": "sellora",
     "version": "1.0.0",
+    "icon": "./assets/branding/app-icon.png",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "plugins": [
       "expo-router",
-      ["expo-splash-screen", { "backgroundColor": "#102C3A" }],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/branding/splash.png",
+          "imageWidth": 260,
+          "resizeMode": "contain",
+          "backgroundColor": "#102C3A",
+          "dark": {
+            "image": "./assets/branding/splash.png",
+            "backgroundColor": "#102C3A"
+          }
+        }
+      ],
       ["expo-image-picker", { "photosPermission": "Sellora uses your photo library for your profile picture.", "cameraPermission": "Sellora uses your camera to take a profile picture.", "microphonePermission": false }],
       ["expo-camera", { "cameraPermission": "Sellora uses your camera to scan product barcodes.", "microphonePermission": false, "recordAudioAndroid": false }],
       "expo-secure-store",
@@ -16,6 +29,9 @@
     ],
     "experiments": { "typedRoutes": true },
     "ios": { "supportsTablet": true, "bundleIdentifier": "com.sellora.mobile" },
-    "android": { "package": "com.sellora.mobile", "edgeToEdgeEnabled": true }
+    "android": {
+      "package": "com.sellora.mobile",
+      "adaptiveIcon": { "foregroundImage": "./assets/branding/app-icon.png", "backgroundColor": "#102C3A" }
+    }
   }
 }
