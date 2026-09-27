@@ -10,7 +10,8 @@
     "ios": "expo start --ios",
     "native:android": "expo run:android",
     "native:ios": "expo run:ios",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "create:demo-admin": "node scripts/create-demo-admin.mjs"
   },
   "dependencies": {
     "@react-native-community/datetimepicker": "9.1.0",

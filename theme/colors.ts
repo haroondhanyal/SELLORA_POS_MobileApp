@@ -5,6 +5,13 @@ export const colors = {
   tealDark: '#12806C',
   background: '#F4F7F8',
   surface: '#FFFFFF',
+  surfaceTint: '#E5F6F1',
+  successSurface: '#E5F6F1',
+  warningSurface: '#FFF5DF',
+  dangerSurface: '#FCEEEE',
+  overlay: '#0007',
+  gold: '#E8A33A',
+  onAccent: '#FFFFFF',
   text: '#182A33',
   muted: '#71818A',
   border: '#DEE7E9',
@@ -12,3 +19,6 @@ export const colors = {
   success: '#16805E',
   warning: '#B27618',
 };
+
+/** Immutable original tokens map legacy screen colors onto the chosen theme. */
+export const defaultColors = Object.freeze({ ...colors });

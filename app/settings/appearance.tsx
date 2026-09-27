@@ -36,7 +36,7 @@ export default function AppearanceSettingsScreen() {
 
 function isThemeName(value: string): value is ThemeName { return (themeNames as readonly string[]).includes(value); }
 function isThemeMode(value: string): value is ThemeMode { return ['system', 'light', 'dark'].includes(value); }
-function label(value: string) { return value.charAt(0).toUpperCase() + value.slice(1); }
+function label(value: string) { return value.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()); }
 
 const styles = StyleSheet.create({
   page: { paddingBottom: 30 },

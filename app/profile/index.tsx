@@ -3,7 +3,7 @@ import { Alert, StyleSheet, Text, View } from 'react-native';
 import { Redirect, router } from 'expo-router';
 import { AppButton } from '@/components/AppButton';
 import { AppHeader } from '@/components/AppHeader';
-import { CountryCodePicker } from '@/components/CountryCodePicker';
+import { CountryCodePicker, phoneCountryCodes } from '@/components/CountryCodePicker';
 import { DatePickerField } from '@/components/DatePickerField';
 import { FormField } from '@/components/FormField';
 import { PinField } from '@/components/PinField';
@@ -19,6 +19,7 @@ import { colors } from '@/theme/colors';
 export default function ProfileScreen() {
   const { profile, session, locked, reloadProfile } = useAuth();
   const [name, setName] = useState(profile?.full_name ?? '');
+  const [email, setEmail] = useState(profile?.email ?? '');
   const [phoneDigits, setPhoneDigits] = useState('');
   const [countryCode, setCountryCode] = useState('+92');
   const [birthday, setBirthday] = useState<Date | null>(null);
@@ -33,8 +34,10 @@ export default function ProfileScreen() {
   // Populate editable fields after the signed-in user's profile has loaded.
   useEffect(() => {
     if (profile?.full_name) setName(profile.full_name);
+    if (profile?.email) setEmail(profile.email);
     if (profile?.phone) {
-      const phoneCode = ['+92', '+1', '+44', '+971', '+91']
+      const phoneCode = phoneCountryCodes.map((country) => country.code)
+        .filter((code, index, codes) => codes.indexOf(code) === index)
         .find((code) => profile.phone?.startsWith(`${code} `));
 
       if (phoneCode) {
@@ -57,7 +60,7 @@ export default function ProfileScreen() {
     if (session) {
       hasDevicePin(session.user.id).then(setPinConfigured).catch(() => setPinConfigured(false));
     }
-  }, [profile?.id, profile?.full_name, profile?.phone, profile?.date_of_birth, profile?.avatar_storage_path, session?.user.id]);
+  }, [profile?.id, profile?.full_name, profile?.email, profile?.phone, profile?.date_of_birth, profile?.avatar_storage_path, session?.user.id]);
 
   if (locked) return <Redirect href="/auth/pin-login" />;
   if (!session) return <Redirect href="/auth/login" />;
@@ -65,8 +68,8 @@ export default function ProfileScreen() {
   // Save photo and text fields together so the profile shows one consistent result.
   async function saveProfile() {
     if (!profile) return;
-    if (name.trim().length < 2 || phoneDigits.trim().length < 7) {
-      Alert.alert('Check your details', 'Enter your name and a valid phone number.');
+    if (name.trim().length < 2 || !email.includes('@') || phoneDigits.trim().length < 7) {
+      Alert.alert('Check your details', 'Enter your name, valid email and phone number.');
       return;
     }
 
@@ -92,11 +95,20 @@ export default function ProfileScreen() {
         await requireSupabase().storage.from('avatars').remove([profile.avatar_storage_path]);
       }
 
+      const nextEmail = email.trim().toLowerCase();
+      const emailChanged = nextEmail !== profile.email.toLowerCase();
+      if (emailChanged) {
+        const { error: emailError } = await requireSupabase().auth.updateUser({ email: nextEmail });
+        if (emailError) throw emailError;
+      }
+
       await reloadProfile();
       setPhoto(null);
       setRemovedPhoto(false);
       setSavedAvatarUrl(photoPath ? await getAvatarUrl(photoPath) : null);
-      Alert.alert('Profile updated', 'Your profile details have been saved.');
+      Alert.alert('Profile updated', emailChanged
+        ? 'Your profile details have been saved. Check your new email address to confirm the email change.'
+        : 'Your profile details have been saved.');
     } catch (error) {
       Alert.alert(
         'Could not save profile',
@@ -159,7 +171,9 @@ export default function ProfileScreen() {
           {profile?.role.replaceAll('_', ' ')} · {profile?.approval_status}
         </Text>
 
+        <Text style={styles.sectionTitle}>Account details</Text>
         <ProfileImagePicker
+          label="Profile photo (max 25 MB)"
           uri={displayedPhoto}
           onChange={(uri) => {
             setPhoto(uri);
@@ -167,14 +181,11 @@ export default function ProfileScreen() {
           }}
         />
         <FormField label="Full name" value={name} onChangeText={setName} autoComplete="name" />
-        <FormField label="Email" value={profile?.email ?? ''} editable={false} />
-        <CountryCodePicker value={countryCode} onChange={setCountryCode} />
-        <FormField
-          label="Phone number"
-          value={phoneDigits}
-          onChangeText={setPhoneDigits}
-          keyboardType="phone-pad"
-        />
+        <FormField label="Email" value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" autoComplete="email" />
+        <View style={styles.phoneRow}>
+          <CountryCodePicker value={countryCode} onChange={setCountryCode} compact />
+          <View style={styles.phoneInput}><FormField label="Phone number" value={phoneDigits} onChangeText={setPhoneDigits} keyboardType="phone-pad" /></View>
+        </View>
         <DatePickerField label="Date of birth" value={birthday} onChange={setBirthday} />
         <AppButton title="Save profile" onPress={saveProfile} busy={busy} />
 
@@ -209,6 +220,9 @@ const styles = StyleSheet.create({
   page: { gap: 4, paddingBottom: 30 },
   title: { color: colors.navy, fontSize: 28, fontWeight: '800', marginTop: 25 },
   meta: { color: colors.muted, textTransform: 'capitalize', marginTop: 5 },
+  sectionTitle: { color: colors.navy, fontSize: 17, fontWeight: '800', marginTop: 18 },
+  phoneRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
+  phoneInput: { flex: 1 },
   pinCard: { backgroundColor: 'white', borderRadius: 16, borderColor: colors.border, borderWidth: 1, padding: 16, marginTop: 28 },
   pinTitle: { color: colors.navy, fontWeight: '800', fontSize: 18 },
   pinHelp: { color: colors.muted, marginTop: 6, lineHeight: 20 },

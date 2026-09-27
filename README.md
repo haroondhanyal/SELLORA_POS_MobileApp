@@ -20,7 +20,7 @@ This Expo + React Native + TypeScript application uses separate Expo Router scre
 
 ## Current scope
 
-Phases 1–12 include Sellora launch branding; authentication and user access; catalog/inventory; POS/customers; currency; branches/purchasing; returns/credit/loyalty/expenses; shifts/targets/commissions; approvals/notifications/reports/audit; offline POS sync; AI copilot and backup export.
+Phases 1–12 include Sellora launch branding; authentication and user access; catalog/inventory; POS/customers; currency; branches/purchasing; returns/credit/loyalty/expenses; shifts/targets/commissions; approvals/notifications/reports/audit; offline POS sync; AI copilot and backup export. The current auth and onboarding flow has separate splash, welcome, sign-in, account creation, password recovery, PIN unlock and approval-pending screens.
 
 Phase 11 stores offline customers and sales, caches branch stock for read-only inventory, and retries online synchronization. Manual conflict resolution and offline inventory edits remain limited.
 
@@ -44,6 +44,7 @@ Phase 11 stores offline customers and sales, caches branch stock for read-only i
    - `202609270011_backup_export.sql`
    - `202609270012_phase_completion.sql`
    - `202609270013_copilot_rate_limit.sql`
+   - `202609270014_sync_profile_auth_email.sql`
 
 5. Enable email authentication in Supabase. Add `sellora://auth/pending-approval` and `sellora://auth/reset-password` to the allowed redirect URLs.
 6. Run `npx expo start` for Expo Go. To build the configured native icon, splash screen and system appearance into a development app, use `npm run native:android` or `npm run native:ios` on a machine with the required Android SDK or Xcode.
@@ -51,7 +52,7 @@ Phase 11 stores offline customers and sales, caches branch stock for read-only i
 
 ## First administrator and store setup
 
-Self-signup always creates a pending cashier profile; a requested role is stored separately for review. Create the first account through signup, then promote it to `admin` and `approved` in Supabase as project owner. Never ship a service-role key in the mobile app.
+Self-signup always creates a pending cashier profile; a requested role is stored separately for review. For a disposable test administrator, set `ALLOW_DEMO_ADMIN=true`, `SUPABASE_URL`, and `SUPABASE_SERVICE_ROLE_KEY` in your local shell, then run `npm run create:demo-admin`. The script creates a confirmed demo user, approves its profile, and prints a generated password plus a suggested device PIN. Sign in and set the PIN in My profile. Use a test Supabase project only; never place the service-role key in the mobile app or commit it.
 
 After the first admin signs in:
 
@@ -60,6 +61,15 @@ After the first admin signs in:
 3. Open **Manage users & approvals** and assign the admin account and other users their primary and allowed branches.
 4. Choose the PKR or USD business base currency before creating products. The database locks this setting after products or sales exist to protect stored amounts.
 5. Create categories, brands, products and opening stock. After that, staff with permissions can use POS, receive purchases and transfer stock.
+
+## Authentication, account creation and appearance
+
+- Splash and welcome screens lead to separate sign-in and create-account routes. Sign-in links to account creation; account creation links back to sign-in.
+- Account creation collects name, email, phone with a country/flag picker, date of birth, optional profile photo (up to 25 MB), password, device PIN and requested role. The role request remains pending until an administrator approves it.
+- Sign-in supports password or a device PIN. Password and PIN entries have eye controls to show or hide the value. PIN unlock is available only for a saved Supabase session on that device; signing in with a password is required after signing out or resetting the PIN.
+- Text inputs advance with the keyboard Next action and dismiss the keyboard at the end of a form. Forms scroll while the keyboard is open.
+- Appearance settings include Sellora, Ocean, Emerald, Purple, Midnight, Sunset, Monochrome, Grey, Silver and High Contrast palettes, each with system, light and dark modes. High Contrast uses dark input surfaces with white text; the saved palette is loaded before app screens render.
+- The app does not contain a shared hardcoded admin password. Create an approved test admin with the guarded script above, or provision production administrators through Supabase with an authorized project owner account.
 
 ## Phases 4–7
 
@@ -101,7 +111,7 @@ After the first admin signs in:
 - Sellora Copilot is a Supabase Edge Function. It checks the caller's JWT, approval and role permission, reads through the caller's RLS-limited session, and allows up to 20 questions per user per hour. It sends no customer names or profile data to the AI provider. Configure `OPENAI_API_KEY` and optionally `SELLORA_AI_MODEL` as Edge Function secrets, then deploy `sellora-ai-copilot`.
 - Approved admins can export a JSON snapshot through a database function and the native share sheet. Exports include sensitive employee/customer records; storage images are not part of the snapshot. Keep routine Supabase backups enabled as well.
 - Production release still requires real Supabase credentials, applying and reviewing all migrations, Edge Function deployment/secrets, and Android/iOS device QA. Automated tests and full offline reconciliation are not included.
-- Appearance supports the Sellora, Ocean, Emerald, Purple, Midnight, Sunset and Monochrome palettes, each in system, light and dark modes.
+- Appearance preferences are stored locally and applied across screens. Ten palettes are available in system, light and dark modes.
 
 ## Structure
 
@@ -119,8 +129,7 @@ app/warehouses/      Warehouse and manager setup
 app/transfers/       Inter-branch stock transfer workflow
 app/purchases/       Purchase orders and goods-received notes
 app/suppliers/       Branch supplier records
-app/settings/        Currency settings and rates
-app/settings/        Appearance, backup and offline sync settings
+app/settings/        Appearance, backup, currency and offline sync settings
 app/ai/              Authenticated retail copilot
 app/approvals/       Approval requests and review
 app/notifications/   Personal notifications

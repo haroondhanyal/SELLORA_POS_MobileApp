@@ -4,7 +4,7 @@ import { colors } from '@/theme/colors';
 import { useTheme } from '@/theme/ThemeProvider';
 
 /** Reusable SVG brand mark that matches the native icon and splash assets. */
-export function Brand({ compact = false }: { compact?: boolean }) {
+export function Brand({ compact = false, markOnly = false }: { compact?: boolean; markOnly?: boolean }) {
   const theme = useTheme();
   const markSize = compact ? 36 : 52;
   return <View style={styles.row}>
@@ -15,7 +15,7 @@ export function Brand({ compact = false }: { compact?: boolean }) {
         <Path d="M31 24c-6-3-10 3-5 5l5 2c5 2 2 8-3 8-3 0-5-1-7-3" fill="none" stroke={theme.colors.tealDark} strokeWidth="2.5" strokeLinecap="round" />
       </Svg>
     </View>
-    <View><Text style={[styles.name, { color: theme.colors.navy }, compact && styles.smallName]}>SELLORA</Text>{!compact && <Text style={[styles.tagline, { color: theme.colors.muted }]}>Sell Smarter. Manage Anywhere.</Text>}</View>
+    {!markOnly ? <View><Text style={[styles.name, { color: theme.colors.navy }, compact && styles.smallName]}>SELLORA</Text>{!compact && <Text style={[styles.tagline, { color: theme.colors.muted }]}>Sell Smarter. Manage Anywhere.</Text>}</View> : null}
   </View>;
 }
 

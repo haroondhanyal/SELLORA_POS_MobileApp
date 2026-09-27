@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { router } from 'expo-router';
+import { Link, router } from 'expo-router';
 import { Alert, StyleSheet, Text, View } from 'react-native';
 import { AppButton } from '@/components/AppButton';
 import { Brand } from '@/components/Brand';
@@ -10,6 +10,7 @@ import { PasswordField } from '@/components/PasswordField';
 import { ProfileImagePicker } from '@/components/ProfileImagePicker';
 import { PinField } from '@/components/PinField';
 import { RolePicker } from '@/components/RolePicker';
+import { AppearanceToggle } from '@/components/AppearanceToggle';
 import { Screen } from '@/components/Screen';
 import { rememberPendingAvatar, uploadProfileAvatar, clearPendingAvatar } from '@/services/avatars';
 import { signUp } from '@/services/auth';
@@ -23,6 +24,7 @@ export default function SignupScreen() {
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [countryCode, setCountryCode] = useState('+92');
+  const [countryName, setCountryName] = useState('Pakistan');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [pin, setPin] = useState('');
@@ -110,23 +112,26 @@ export default function SignupScreen() {
   return (
     <Screen>
       <View style={styles.page}>
-        <Brand />
+        <View style={styles.authHeader}><Brand /><AppearanceToggle /></View>
         <View>
           <Text style={styles.title}>Create account</Text>
           <Text style={styles.subtitle}>Your administrator will review this access request.</Text>
 
-          <ProfileImagePicker uri={avatarUri} onChange={setAvatarUri} />
-          <FormField label="Full name" value={name} onChangeText={setName} autoComplete="name" />
+          <ProfileImagePicker label="Profile photo (max 25 MB)" uri={avatarUri} onChange={setAvatarUri} />
+          <FormField label="Full name" placeholder="Enter your full name" value={name} onChangeText={setName} autoComplete="name" />
           <FormField
             label="Email"
+            placeholder="you@example.com"
             value={email}
             onChangeText={setEmail}
             autoCapitalize="none"
             keyboardType="email-address"
             autoComplete="email"
           />
-          <CountryCodePicker value={countryCode} onChange={setCountryCode} />
-          <FormField label="Phone number" value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
+          <View style={styles.phoneRow}>
+            <CountryCodePicker value={countryCode} countryName={countryName} onChange={(code, name) => { setCountryCode(code); if (name) setCountryName(name); }} compact />
+            <View style={styles.phoneInput}><FormField label="Phone number" placeholder="300 1234567" value={phone} onChangeText={setPhone} keyboardType="phone-pad" /></View>
+          </View>
           <DatePickerField label="Date of birth" value={birthday} onChange={setBirthday} />
           <PasswordField value={password} onChangeText={setPassword} />
           <PasswordField
@@ -140,6 +145,7 @@ export default function SignupScreen() {
           <RolePicker value={role} onChange={setRole} />
         </View>
         <AppButton title="Send account request" onPress={submitSignup} busy={busy} />
+        <Link href="/auth/login" style={styles.signInLink}>Already have an account? Sign in</Link>
       </View>
     </Screen>
   );
@@ -155,6 +161,10 @@ function formatDate(date: Date) {
 
 const styles = StyleSheet.create({
   page: { gap: 22, paddingBottom: 24 },
+  authHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  phoneRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
+  phoneInput: { flex: 1 },
   title: { color: colors.navy, fontSize: 28, fontWeight: '800', marginTop: 24 },
   subtitle: { color: colors.muted, marginTop: 6, lineHeight: 21 },
+  signInLink: { color: colors.tealDark, textAlign: 'center', fontWeight: '800', paddingVertical: 12 },
 });

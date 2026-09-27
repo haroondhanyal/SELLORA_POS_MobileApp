@@ -13,7 +13,7 @@
         "expo-splash-screen",
         {
           "image": "./assets/branding/splash.png",
-          "imageWidth": 260,
+          "imageWidth": 110,
           "resizeMode": "contain",
           "backgroundColor": "#102C3A",
           "dark": {
@@ -31,6 +31,7 @@
     "ios": { "supportsTablet": true, "bundleIdentifier": "com.sellora.mobile" },
     "android": {
       "package": "com.sellora.mobile",
+      "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": { "foregroundImage": "./assets/branding/app-icon.png", "backgroundColor": "#102C3A" }
     }
   }

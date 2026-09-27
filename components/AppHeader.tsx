@@ -6,6 +6,8 @@ import type { UserProfile } from '@/types/auth';
 import { useConnection } from '@/providers/ConnectionProvider';
 import { useCurrency } from '@/providers/CurrencyProvider';
 import { getAvatarUrl } from '@/services/avatars';
+import { AppearanceToggle } from '@/components/AppearanceToggle';
+import { ThemeStyle } from '@/components/ThemeStyle';
 import { colors } from '@/theme/colors';
 
 /** Shared signed-in header with profile, connection state and display-currency picker. */
@@ -64,7 +66,7 @@ export function AppHeader({ profile }: { profile: UserProfile | null }) {
   }
 
   return (
-    <>
+    <ThemeStyle>
       <View style={styles.header}>
         <Pressable onPress={() => router.push('/profile')} style={styles.identity}>
           {avatarUri ? <Image source={{ uri: avatarUri }} style={styles.avatar} /> : (
@@ -78,6 +80,7 @@ export function AppHeader({ profile }: { profile: UserProfile | null }) {
           </View>
         </Pressable>
         <View style={styles.rightActions}>
+          <AppearanceToggle />
           <Pressable accessibilityRole="button" onPress={() => setConnectionOpen(true)} style={styles.status}>
             <View style={[styles.dot, { backgroundColor: online ? colors.success : colors.warning }]} />
             <Text style={styles.statusText}>{online ? 'Online' : 'Offline'}{pending ? ` · ${pending}` : ''}</Text>
@@ -104,7 +107,7 @@ export function AppHeader({ profile }: { profile: UserProfile | null }) {
           </Pressable>
         </Pressable>
       </Modal>
-    </>
+    </ThemeStyle>
   );
 }
 

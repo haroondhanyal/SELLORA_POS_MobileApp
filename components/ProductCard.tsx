@@ -1,5 +1,6 @@
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors } from '@/theme/colors';
+import { ThemeStyle } from '@/components/ThemeStyle';
 
 /** Compact catalogue card used by product lists, stock screens, and POS. */
 export function ProductCard({ name, sku, price, stock, imageUrl, onPress, favorite, onToggleFavorite }: {
@@ -13,7 +14,7 @@ export function ProductCard({ name, sku, price, stock, imageUrl, onPress, favori
   onToggleFavorite?: () => void;
 }) {
   return (
-    <View style={styles.card}>
+    <ThemeStyle><View style={styles.card}>
       <Pressable onPress={onPress} style={styles.product}>
       {imageUrl ? <Image source={{ uri: imageUrl }} style={styles.image} /> : <View style={styles.imagePlaceholder}><Text style={styles.placeholderText}>S</Text></View>}
       <View style={styles.details}>
@@ -24,7 +25,7 @@ export function ProductCard({ name, sku, price, stock, imageUrl, onPress, favori
       </View>
       </Pressable>
       {onToggleFavorite ? <Pressable accessibilityRole="button" onPress={onToggleFavorite} hitSlop={10} style={styles.favorite}><Text style={[styles.favoriteText, favorite && styles.favorited]}>{favorite ? '★' : '☆'}</Text></Pressable> : null}
-    </View>
+    </View></ThemeStyle>
   );
 }
 

@@ -1,20 +1,25 @@
 import { useState } from 'react';
 import { Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import DateTimePicker, { type DateTimePickerChangeEvent } from '@react-native-community/datetimepicker';
 import { colors } from '@/theme/colors';
 import { radius } from '@/theme/radius';
+import { useTheme } from '@/theme/ThemeProvider';
 
 /** Native date field used by signup and profile editing. */
 export function DatePickerField({ label, value, onChange }: { label: string; value: Date | null; onChange: (date: Date) => void }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(value ?? new Date(2000, 0, 1));
-  function handleChange(event: DateTimePickerEvent, date?: Date) {
-    if (event.type === 'dismissed') { setOpen(false); return; }
-    if (date) { setDraft(date); if (Platform.OS === 'android') { onChange(date); setOpen(false); } }
+  const theme = useTheme();
+  const highContrast = theme.name === 'high_contrast';
+  function handleValueChange(_event: DateTimePickerChangeEvent, date: Date) {
+    setDraft(date);
+    if (Platform.OS === 'android') { onChange(date); setOpen(false); }
   }
-  return <View style={styles.group}><Text style={styles.label}>{label}</Text><Pressable onPress={() => setOpen(true)} style={styles.field}><Text style={[styles.value, !value && styles.placeholder]}>{value ? value.toLocaleDateString() : 'Select date'}</Text></Pressable>
-    {open && Platform.OS === 'android' ? <DateTimePicker value={draft} mode="date" display="default" maximumDate={new Date()} onChange={handleChange} /> : null}
-    <Modal transparent visible={open && Platform.OS === 'ios'} animationType="slide" onRequestClose={() => setOpen(false)}><View style={styles.backdrop}><View style={styles.sheet}><Text style={styles.sheetTitle}>Choose date</Text><DateTimePicker value={draft} mode="date" display="spinner" maximumDate={new Date()} onChange={handleChange} /><View style={styles.actions}><Pressable onPress={() => setOpen(false)}><Text style={styles.cancel}>Cancel</Text></Pressable><Pressable onPress={() => { onChange(draft); setOpen(false); }}><Text style={styles.done}>Done</Text></Pressable></View></View></View></Modal>
+  const fieldBackground = highContrast ? '#000000' : theme.colors.surface;
+  const fieldText = highContrast ? '#FFFFFF' : theme.colors.text;
+  return <View style={styles.group}><Text style={[styles.label, { color: theme.colors.text }]}>{label}</Text><Pressable accessibilityRole="button" onPress={() => setOpen(true)} style={[styles.field, { backgroundColor: fieldBackground, borderColor: highContrast ? '#FFFFFF' : theme.colors.border, borderWidth: highContrast ? 2 : 1 }]}><Text style={[styles.value, { color: value || highContrast ? fieldText : theme.colors.muted }]}>{value ? `📅  ${value.toLocaleDateString()}` : '📅  Select date'}</Text></Pressable>
+    {open && Platform.OS === 'android' ? <DateTimePicker value={draft} mode="date" display="calendar" maximumDate={new Date()} onValueChange={handleValueChange} onDismiss={() => setOpen(false)} /> : null}
+    <Modal transparent visible={open && Platform.OS === 'ios'} animationType="slide" onRequestClose={() => setOpen(false)}><View style={[styles.backdrop, { backgroundColor: theme.colors.overlay }]}><View style={[styles.sheet, { backgroundColor: theme.colors.surface }]}><Text style={[styles.sheetTitle, { color: theme.colors.text }]}>Choose date</Text><DateTimePicker value={draft} mode="date" display="inline" maximumDate={new Date()} onValueChange={handleValueChange} onDismiss={() => setOpen(false)} /><View style={styles.actions}><Pressable onPress={() => setOpen(false)}><Text style={[styles.cancel, { color: theme.colors.text }]}>Cancel</Text></Pressable><Pressable onPress={() => { onChange(draft); setOpen(false); }}><Text style={[styles.done, { color: theme.colors.tealDark }]}>Done</Text></Pressable></View></View></View></Modal>
   </View>;
 }
 
