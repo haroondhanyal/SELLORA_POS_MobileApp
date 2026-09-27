@@ -41,3 +41,19 @@ export async function listAuditEvents(branchId:string) {
   const {data,error}=await requireSupabase().from('audit_logs').select('id,action,entity,summary,created_at,profiles!audit_logs_actor_id_fkey(full_name)').eq('branch_id',branchId).order('created_at',{ascending:false}).limit(100);
   if(error) throw error; return data??[];
 }
+
+/** Loads financial and sales breakdown source rows for branch reports. */
+export async function getDetailedReport(branchId:string,start:string){
+  const client=requireSupabase();
+  const [sales,items,expenses,returns,commissions]=await Promise.all([
+    client.from('sales').select('id,total,discount_total,status,created_at,sales_agent_id,cashier_id,customer_id,profiles!sales_sales_agent_id_fkey(full_name),cashier:profiles!sales_cashier_id_fkey(full_name),customers(full_name)')
+      .eq('branch_id',branchId).gte('created_at',start).limit(5000),
+    client.from('sale_items').select('product_name,product_id,quantity,unit_cost,line_total,tax_amount,discount_amount,sales!inner(branch_id,created_at,status),products(category_id,categories(name))')
+      .eq('sales.branch_id',branchId).gte('sales.created_at',start).limit(10000),
+    client.from('expenses').select('amount,category,created_at').eq('branch_id',branchId).gte('created_at',start).limit(5000),
+    client.from('sales_returns').select('refund_total,created_at').eq('branch_id',branchId).gte('created_at',start).limit(5000),
+    client.from('agent_commissions').select('commission_amount,created_at').eq('branch_id',branchId).gte('created_at',start).limit(5000),
+  ]);
+  for(const result of [sales,items,expenses,returns,commissions])if(result.error)throw result.error;
+  return {sales:sales.data??[],items:items.data??[],expenses:expenses.data??[],returns:returns.data??[],commissions:commissions.data??[]};
+}

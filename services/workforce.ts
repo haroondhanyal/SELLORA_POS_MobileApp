@@ -20,6 +20,19 @@ export async function closeShift(shiftId: string, actualCash: number, note: stri
   if (error) throw error;
 }
 
+/** Records a documented manual cash-in or cash-out against an open employee shift. */
+export async function recordCashDrawerEntry(input:{shiftId:string;type:'cash_in'|'cash_out';amount:number;reason:string}){
+  const {error}=await requireSupabase().rpc('sellora_record_cash_drawer_entry',{p_shift_id:input.shiftId,p_type:input.type,p_amount:input.amount,p_reason:input.reason});
+  if(error)throw error;
+}
+
+/** Lists the cash movements entered manually during one shift. */
+export async function listCashDrawerEntries(shiftId:string){
+  const {data,error}=await requireSupabase().from('cash_drawer_entries').select('id,entry_type,amount,reason,created_at').eq('shift_id',shiftId).order('created_at');
+  if(error)throw error;
+  return data??[];
+}
+
 /** Lists sales agents and their latest assigned targets. */
 export async function listBranchTargets(branchId: string) {
   const { data, error } = await requireSupabase().from('sales_targets')

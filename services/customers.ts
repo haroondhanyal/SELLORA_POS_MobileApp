@@ -1,6 +1,7 @@
 import { requireSupabase } from '@/services/supabase';
 import * as Crypto from 'expo-crypto';
 import * as FileSystem from 'expo-file-system/legacy';
+import * as SQLite from 'expo-sqlite';
 
 export type Customer = {
   id: string;
@@ -24,7 +25,39 @@ export async function listCustomers(branchId: string) {
     .select('id, branch_id, full_name, phone, email, address, date_of_birth, avatar_storage_path, credit_limit, credit_balance, store_credit_balance, loyalty_points, assigned_sales_agent_id')
     .eq('branch_id', branchId).order('full_name').limit(500);
   if (error) throw error;
-  return (data ?? []) as Customer[];
+  const customers = (data ?? []) as Customer[];
+  const db = await SQLite.openDatabaseAsync('sellora.db');
+  for (const customer of customers) {
+    await db.runAsync('INSERT INTO cached_customers(branch_id,id,payload,updated_at) VALUES(?,?,?,?) ON CONFLICT(branch_id,id) DO UPDATE SET payload=excluded.payload,updated_at=excluded.updated_at', branchId, customer.id, JSON.stringify(customer), new Date().toISOString());
+  }
+  return customers;
+}
+
+/** Reads branch customers last cached online for an offline POS lookup. */
+export async function listCachedCustomers(branchId: string) {
+  const db = await SQLite.openDatabaseAsync('sellora.db');
+  const rows = await db.getAllAsync<{payload:string}>('SELECT payload FROM cached_customers WHERE branch_id=?', branchId);
+  return rows.map((row) => JSON.parse(row.payload) as Customer).sort((left,right)=>left.full_name.localeCompare(right.full_name));
+}
+
+/** Saves a customer on-device and queues it for insert before dependent offline sales sync. */
+export async function queueOfflineCustomer(input: {
+  branch_id: string; full_name: string; phone: string | null; email: string | null; address: string | null;
+  date_of_birth: string | null; credit_limit: number; assigned_sales_agent_id: string | null; userId:string;
+}) {
+  if (!input.userId) throw new Error('Sign in before adding a customer.');
+  const db = await SQLite.openDatabaseAsync('sellora.db');
+  const customer: Customer = {
+    id: Crypto.randomUUID(), branch_id: input.branch_id, full_name: input.full_name.trim(), phone: input.phone,
+    email: input.email, address: input.address, date_of_birth: input.date_of_birth, avatar_storage_path: null,
+    credit_limit: input.credit_limit, credit_balance: 0, store_credit_balance: 0, loyalty_points: 0,
+    assigned_sales_agent_id: input.assigned_sales_agent_id,
+  };
+  await db.withTransactionAsync(async () => {
+    await db.runAsync('INSERT INTO cached_customers(branch_id,id,payload) VALUES(?,?,?)', customer.branch_id, customer.id, JSON.stringify(customer));
+    await db.runAsync('INSERT INTO offline_customers(id,user_id,branch_id,payload,status) VALUES(?,?,?,?,\'pending\')', customer.id, input.userId, customer.branch_id, JSON.stringify({ ...customer, created_by: input.userId }));
+  });
+  return customer.id;
 }
 
 /** Creates a customer in the current user's primary branch. */
@@ -94,7 +127,46 @@ export async function getCustomerPhotoUrl(path: string | null) {
 export async function listBranchSalesAgents(branchId: string) {
   const { data, error } = await requireSupabase().rpc('sellora_list_branch_sales_agents', { target_branch: branchId });
   if (error) throw error;
-  return (data ?? []) as { id: string; full_name: string }[];
+  const agents = (data ?? []) as { id: string; full_name: string }[];
+  const db = await SQLite.openDatabaseAsync('sellora.db');
+  for (const agent of agents) await db.runAsync('INSERT INTO cached_sales_agents(branch_id,id,full_name) VALUES(?,?,?) ON CONFLICT(branch_id,id) DO UPDATE SET full_name=excluded.full_name', branchId, agent.id, agent.full_name);
+  return agents;
+}
+
+/** Reads sales agents cached by an online POS session in the same branch. */
+export async function listCachedBranchSalesAgents(branchId:string) {
+  const db=await SQLite.openDatabaseAsync('sellora.db');
+  return db.getAllAsync<{id:string;full_name:string}>('SELECT id,full_name FROM cached_sales_agents WHERE branch_id=? ORDER BY full_name',branchId);
+}
+
+/** Uploads local customer records idempotently before their queued sale is uploaded. */
+export async function syncOfflineCustomers(userId:string) {
+  const db=await SQLite.openDatabaseAsync('sellora.db');
+  await db.runAsync("UPDATE offline_customers SET status='pending' WHERE user_id=? AND status='syncing'",userId);
+  const rows=await db.getAllAsync<{id:string;branch_id:string;payload:string}>('SELECT id,branch_id,payload FROM offline_customers WHERE user_id=? AND status IN (\'pending\',\'failed\') ORDER BY created_at',userId);
+  for(const row of rows){
+    try{
+      await db.runAsync("UPDATE offline_customers SET status='syncing',last_error=NULL WHERE id=?",row.id);
+      const customer=JSON.parse(row.payload) as Customer & {created_by:string};
+      const {data:{user}}=await requireSupabase().auth.getUser();
+      if(!user||user.id!==userId) throw new Error('Sign in with the account that created this customer.');
+      const {error}=await requireSupabase().from('customers').upsert({
+        id:customer.id,branch_id:customer.branch_id,full_name:customer.full_name,phone:customer.phone,email:customer.email,
+        address:customer.address,date_of_birth:customer.date_of_birth,credit_limit:customer.credit_limit,
+        assigned_sales_agent_id:customer.assigned_sales_agent_id,created_by:customer.created_by,
+      },{onConflict:'id',ignoreDuplicates:true});
+      if(error) throw error;
+      await db.runAsync("UPDATE offline_customers SET status='synced',synced_at=CURRENT_TIMESTAMP WHERE id=?",row.id);
+    }catch(error){
+      await db.runAsync("UPDATE offline_customers SET status='failed',last_error=? WHERE id=?",error instanceof Error?error.message:'Customer sync failed',row.id);
+    }
+  }
+}
+
+/** Lists local customer queue state for diagnostics and retry visibility. */
+export async function listOfflineCustomers(userId:string) {
+  const db=await SQLite.openDatabaseAsync('sellora.db');
+  return db.getAllAsync<{id:string;payload:string;status:string;last_error:string|null;created_at:string}>('SELECT id,payload,status,last_error,created_at FROM offline_customers WHERE user_id=? ORDER BY created_at DESC LIMIT 100',userId);
 }
 
 /** Posts a payment against one customer's outstanding balance. */
@@ -104,6 +176,13 @@ export async function receiveCustomerCreditPayment(input: { customerId: string; 
   });
   if (error) throw error;
   return data as string;
+}
+
+/** Converts whole hundreds of loyalty points into customer store credit. */
+export async function redeemCustomerLoyalty(customerId:string,points:number){
+  const {data,error}=await requireSupabase().rpc('sellora_redeem_loyalty',{p_customer_id:customerId,p_points:points});
+  if(error)throw error;
+  return Number(data);
 }
 
 /** Reads one transaction with its immutable line, payment and base-currency snapshots. */

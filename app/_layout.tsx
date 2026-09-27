@@ -9,8 +9,15 @@ import { ThemeProvider } from '@/theme/ThemeProvider';
 import { CartProvider } from '@/providers/CartProvider';
 import { CurrencyProvider } from '@/providers/CurrencyProvider';
 import { OfflineSyncProvider } from '@/providers/OfflineSyncProvider';
+import { useTheme } from '@/theme/ThemeProvider';
 
 /** Root navigation: each app feature is kept in its own route file. */
 export default function RootLayout() {
-  return <SafeAreaProvider><SQLiteProvider databaseName="sellora.db" onInit={initializeLocalDatabase}><ThemeProvider><ConnectionProvider><AuthProvider><OfflineSyncProvider><CurrencyProvider><CartProvider><StatusBar style="dark" /><Stack screenOptions={{ headerShown: false, animation: 'fade' }} /></CartProvider></CurrencyProvider></OfflineSyncProvider></AuthProvider></ConnectionProvider></ThemeProvider></SQLiteProvider></SafeAreaProvider>;
+  return <SafeAreaProvider><SQLiteProvider databaseName="sellora.db" onInit={initializeLocalDatabase}><ThemeProvider><ConnectionProvider><AuthProvider><OfflineSyncProvider><CurrencyProvider><CartProvider><ThemedNavigation /></CartProvider></CurrencyProvider></OfflineSyncProvider></AuthProvider></ConnectionProvider></ThemeProvider></SQLiteProvider></SafeAreaProvider>;
+}
+
+/** Remounts screens on appearance changes so shared color tokens repaint everywhere. */
+function ThemedNavigation() {
+  const { name, mode, resolvedMode } = useTheme();
+  return <><StatusBar style={resolvedMode === 'dark' ? 'light' : 'dark'} /><Stack key={`${name}-${mode}-${resolvedMode}`} screenOptions={{ headerShown: false, animation: 'fade' }} /></>;
 }

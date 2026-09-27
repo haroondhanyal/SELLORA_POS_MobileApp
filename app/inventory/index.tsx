@@ -10,12 +10,16 @@ import { useAuth } from '@/providers/AuthProvider';
 import { useCurrency } from '@/providers/CurrencyProvider';
 import { getProductImageUrl } from '@/services/catalog';
 import { listInventory, type InventoryRow } from '@/services/inventory';
+import { listCachedInventory } from '@/services/inventory';
 import { colors } from '@/theme/colors';
+import { useConnection } from '@/providers/ConnectionProvider';
+import { requireSupabase } from '@/services/supabase';
 
 /** Phase 4 inventory list for products held in the user's assigned branches. */
 export default function InventoryScreen() {
   const { formatMoney } = useCurrency();
   const { profile, permissionCodes, session, locked } = useAuth();
+  const { mode } = useConnection();
   const [rows, setRows] = useState<InventoryRow[]>([]);
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
   const [search, setSearch] = useState('');
@@ -26,9 +30,9 @@ export default function InventoryScreen() {
   async function load() {
     setLoading(true);
     try {
-      const stockRows = await listInventory();
+      const stockRows = mode === 'offline' && profile?.primary_branch_id ? await listCachedInventory(profile.primary_branch_id) : await listInventory();
       setRows(stockRows);
-      const images = await Promise.all(stockRows.map(async (row) => [row.product_id, await getProductImageUrl(row.products?.image_storage_path ?? null)] as const));
+      const images = mode === 'offline' ? [] : await Promise.all(stockRows.map(async (row) => [row.product_id, await getProductImageUrl(row.products?.image_storage_path ?? null)] as const));
       setPhotoUrls(Object.fromEntries(images.filter(([, uri]) => Boolean(uri))) as Record<string, string>);
     } catch (error) {
       Alert.alert('Could not load stock', error instanceof Error ? error.message : 'Check your access and connection.');
@@ -37,7 +41,14 @@ export default function InventoryScreen() {
     }
   }
 
-  useEffect(() => { void load(); }, []);
+  useEffect(() => { void load(); }, [mode, profile?.primary_branch_id]);
+  useEffect(() => {
+    if (mode !== 'online' || !profile?.primary_branch_id) return;
+    const channel = requireSupabase().channel(`sellora-inventory-${profile.primary_branch_id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory' }, () => void load())
+      .subscribe();
+    return () => { void requireSupabase().removeChannel(channel); };
+  }, [mode, profile?.primary_branch_id]);
   const visibleRows = useMemo(() => {
     const query = search.trim().toLowerCase();
     return rows.filter((row) => !query || `${row.products?.name ?? ''} ${row.products?.sku ?? ''} ${row.warehouses?.name ?? ''}`.toLowerCase().includes(query));
@@ -53,8 +64,9 @@ export default function InventoryScreen() {
         <Text style={styles.title}>Inventory</Text>
         <Text style={styles.help}>View current stock by product and warehouse.</Text>
         <FormField label="Search name, SKU or warehouse" value={search} onChangeText={setSearch} />
-        {canAdjust ? <AppButton title="Adjust stock" onPress={() => router.push('/inventory/adjustment')} /> : null}
-        {canView ? <AppButton title="Adjustment history" onPress={() => router.push('/inventory/adjustments')} secondary /> : null}
+        {canAdjust && mode === 'online' ? <AppButton title="Adjust stock" onPress={() => router.push('/inventory/adjustment')} /> : null}
+        {canView && mode === 'online' ? <AppButton title="Adjustment history" onPress={() => router.push('/inventory/adjustments')} secondary /> : null}
+        {mode === 'offline' ? <Text style={styles.help}>Offline view uses the last saved stock snapshot. Stock changes need an online connection.</Text> : null}
         {!canView ? <Text style={styles.empty}>Your role does not have inventory access.</Text> : null}
         {loading ? <Text style={styles.help}>Loading stock…</Text> : null}
         {canView && !loading && visibleRows.map((row) => {

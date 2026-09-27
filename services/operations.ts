@@ -1,4 +1,6 @@
 import { requireSupabase } from '@/services/supabase';
+import * as Crypto from 'expo-crypto';
+import * as FileSystem from 'expo-file-system/legacy';
 
 export type Supplier = { id: string; branch_id: string; name: string; company_name: string | null; phone: string | null; email: string | null; address: string | null; is_active: boolean };
 export type StockTransfer = { id: string; transfer_number: string; from_branch_id: string; to_branch_id: string; from_warehouse_id: string; to_warehouse_id: string; status: string; note: string; created_at: string };
@@ -41,21 +43,51 @@ export async function listSalesReturns(branchId: string) {
 }
 
 /** Records a branch expense. Database permissions enforce branch and author access. */
-export async function createExpense(input: { branchId: string; category: string; description: string; amount: number; method: string }) {
+export async function createExpense(input: { branchId: string; category: string; description: string; amount: number; method: string; receiptUri?: string | null }) {
   const client = requireSupabase();
   const { data: { user } } = await client.auth.getUser();
   if (!user) throw new Error('Sign in before recording an expense.');
-  const { error } = await client.from('expenses').insert({
-    branch_id: input.branchId, category: input.category, description: input.description.trim(),
-    amount: input.amount, payment_method: input.method, created_by: user.id,
-  });
-  if (error) throw error;
+  let receiptPath:string|null=null;
+  try{
+    if(input.receiptUri) receiptPath=await uploadExpenseReceipt(input.branchId,input.receiptUri);
+    const { error } = await client.from('expenses').insert({
+      branch_id: input.branchId, category: input.category, description: input.description.trim(),
+      amount: input.amount, payment_method: input.method, receipt_storage_path:receiptPath, created_by: user.id,
+    });
+    if (error) throw error;
+  }catch(error){
+    if(receiptPath) await client.storage.from('expenses').remove([receiptPath]);
+    throw error;
+  }
+}
+
+/** Validates and uploads an expense receipt to the branch-private storage bucket. */
+async function uploadExpenseReceipt(branchId:string,uri:string){
+  const info=await FileSystem.getInfoAsync(uri);
+  if(!info.exists||!info.size)throw new Error('Choose an image available on this device.');
+  if(info.size>25*1024*1024)throw new Error('Maximum image size is 25 MB. Please select a smaller image.');
+  const extension=uri.split('.').pop()?.split('?')[0]?.toLowerCase();
+  const mimeType=extension==='png'?'image/png':extension==='webp'?'image/webp':'image/jpeg';
+  const base64=await FileSystem.readAsStringAsync(uri,{encoding:FileSystem.EncodingType.Base64});
+  const body=await(await fetch(`data:${mimeType};base64,${base64}`)).arrayBuffer();
+  const path=`${branchId}/${Crypto.randomUUID()}.${extension==='png'||extension==='webp'?extension:'jpg'}`;
+  const {error}=await requireSupabase().storage.from('expenses').upload(path,body,{contentType:mimeType,upsert:false});
+  if(error)throw error;
+  return path;
+}
+
+/** Creates a short-lived URL for a receipt image in the private expenses bucket. */
+export async function getExpenseReceiptUrl(path:string|null){
+  if(!path)return null;
+  const {data,error}=await requireSupabase().storage.from('expenses').createSignedUrl(path,60*60);
+  if(error)throw error;
+  return data.signedUrl;
 }
 
 /** Lists recent expenses in a branch visible to the current role. */
 export async function listExpenses(branchId: string) {
   const { data, error } = await requireSupabase().from('expenses')
-    .select('id,category,description,amount,payment_method,created_at').eq('branch_id', branchId)
+    .select('id,category,description,amount,payment_method,receipt_storage_path,created_at').eq('branch_id', branchId)
     .order('created_at', { ascending: false }).limit(100);
   if (error) throw error;
   return data ?? [];

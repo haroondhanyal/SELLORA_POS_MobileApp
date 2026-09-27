@@ -11,6 +11,8 @@ export type SellableProduct = {
   price: number;
   costPrice: number;
   taxRate: number;
+  minimumStock: number;
+  reorderLevel: number;
   imagePath: string | null;
   quantityAvailable: number;
 };

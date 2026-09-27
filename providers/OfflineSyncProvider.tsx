@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState, type PropsWithC
 import { useAuth } from '@/providers/AuthProvider';
 import { useConnection } from '@/providers/ConnectionProvider';
 import { syncOfflineSales } from '@/services/offlineSales';
+import { syncOfflineCustomers } from '@/services/customers';
 
 type SyncContextValue = { syncing: boolean; refresh: () => Promise<void> };
 const SyncContext = createContext<SyncContextValue>({ syncing: false, refresh: async () => {} });
@@ -19,7 +20,10 @@ export function OfflineSyncProvider({ children }: PropsWithChildren) {
       if (!active || running.current) return;
       running.current = true;
       setSyncing(true);
-      try { await syncOfflineSales(session.user.id); } catch { /* The sync queue keeps failures visible for a later retry. */ } finally { running.current = false; if (active) setSyncing(false); }
+      try {
+        await syncOfflineCustomers(session.user.id);
+        await syncOfflineSales(session.user.id);
+      } catch { /* Failed records stay visible in the queue for a later retry. */ } finally { running.current = false; if (active) setSyncing(false); }
     };
     void run();
     const interval = setInterval(() => { void run(); }, 30_000);
@@ -28,7 +32,7 @@ export function OfflineSyncProvider({ children }: PropsWithChildren) {
   async function refresh() {
     if (!session?.user.id || mode !== 'online' || !connected || running.current) return;
     running.current = true; setSyncing(true);
-    try { await syncOfflineSales(session.user.id); } finally { running.current = false; setSyncing(false); }
+    try { await syncOfflineCustomers(session.user.id); await syncOfflineSales(session.user.id); } finally { running.current = false; setSyncing(false); }
   }
   return <SyncContext.Provider value={{ syncing, refresh }}>{children}</SyncContext.Provider>;
 }

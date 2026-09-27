@@ -8,9 +8,9 @@ import { OptionPicker } from '@/components/OptionPicker';
 import { Screen } from '@/components/Screen';
 import { useAuth } from '@/providers/AuthProvider';
 import { useCurrency } from '@/providers/CurrencyProvider';
+import { useConnection } from '@/providers/ConnectionProvider';
 import { cartKey, useCart } from '@/providers/CartProvider';
-import { listBranchSalesAgents } from '@/services/customers';
-import { listCustomers } from '@/services/customers';
+import { listBranchSalesAgents, listCachedBranchSalesAgents, listCachedCustomers, listCustomers } from '@/services/customers';
 import { getProductImageUrl } from '@/services/catalog';
 import { calculateCartTotals } from '@/services/cart';
 import { colors } from '@/theme/colors';
@@ -20,6 +20,7 @@ export default function PosCartScreen() {
   const params = useLocalSearchParams<{ customerId?: string }>();
   const { profile, session, locked } = useAuth();
   const { formatMoney, baseCurrency } = useCurrency();
+  const { mode } = useConnection();
   const { items, customerId, salesAgentId, warehouseId, setQuantity, setDiscount, setCustomer, setSalesAgent, removeItem } = useCart();
   const [customers, setCustomers] = useState<{ id: string; label: string }[]>([]);
   const [agents, setAgents] = useState<{ id: string; label: string }[]>([]);
@@ -27,25 +28,35 @@ export default function PosCartScreen() {
   const [discountDrafts, setDiscountDrafts] = useState<Record<string, string>>({});
   const totals = calculateCartTotals(items);
 
-  useEffect(() => { if (params.customerId) setCustomer(params.customerId); }, [params.customerId]);
+  useEffect(() => {
+    if (!params.customerId) return;
+    setCustomer(params.customerId);
+    if (mode === 'offline' && profile?.primary_branch_id) {
+      listCachedCustomers(profile.primary_branch_id).then((rows) => {
+        setCustomers(rows.map((customer) => ({ id: customer.id, label: customer.phone ? `${customer.full_name} · ${customer.phone}` : customer.full_name })));
+      }).catch(() => {});
+    }
+  }, [params.customerId, mode, profile?.primary_branch_id]);
 
   useEffect(() => {
     if (!profile?.primary_branch_id) return;
-    Promise.all([listCustomers(profile.primary_branch_id), listBranchSalesAgents(profile.primary_branch_id)]).then(([customerRows, agentRows]) => {
+    const customerRequest = mode === 'offline' ? listCachedCustomers(profile.primary_branch_id) : listCustomers(profile.primary_branch_id);
+    const agentRequest = mode === 'offline' ? listCachedBranchSalesAgents(profile.primary_branch_id) : listBranchSalesAgents(profile.primary_branch_id);
+    Promise.all([customerRequest, agentRequest]).then(([customerRows, agentRows]) => {
       setCustomers(customerRows.map((customer) => ({ id: customer.id, label: customer.phone ? `${customer.full_name} · ${customer.phone}` : customer.full_name })));
       setAgents(agentRows.map((agent) => ({ id: agent.id, label: agent.full_name })));
       if (profile.role === 'sales_agent' && agentRows.some((agent) => agent.id === profile.id)) setSalesAgent(profile.id);
       else if (!salesAgentId && agentRows.length === 1) setSalesAgent(agentRows[0].id);
     }).catch((error) => Alert.alert('Could not load checkout options', error instanceof Error ? error.message : 'Please try again.'));
-  }, [profile?.id, profile?.primary_branch_id]);
+  }, [profile?.id, profile?.primary_branch_id, mode]);
 
   useEffect(() => {
     let active = true;
-    Promise.all(items.map(async (item) => [item.productId, await getProductImageUrl(item.imagePath)] as const)).then((images) => {
+    (mode === 'offline' ? Promise.resolve([]) : Promise.all(items.map(async (item) => [item.productId, await getProductImageUrl(item.imagePath)] as const))).then((images) => {
       if (active) setPhotoUrls(Object.fromEntries(images.filter(([, uri]) => Boolean(uri))) as Record<string, string>);
     }).catch(() => {});
     return () => { active = false; };
-  }, [items]);
+  }, [items, mode]);
 
   if (locked) return <Redirect href="/auth/pin-login" />;
   if (!session) return <Redirect href="/auth/login" />;

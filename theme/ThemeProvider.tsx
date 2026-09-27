@@ -2,9 +2,10 @@ import { createContext, useContext, useEffect, useMemo, useState, type PropsWith
 import { useColorScheme } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 import { getThemePalette, type ThemeMode, type ThemeName } from '@/theme/themes';
+import { colors as sharedColors } from '@/theme/colors';
 
 type Preferences = { name: ThemeName; mode: ThemeMode };
-type ThemeState = Preferences & { colors: ReturnType<typeof getThemePalette>; setPreferences: (next: Preferences) => Promise<void> };
+type ThemeState = Preferences & { resolvedMode: 'light' | 'dark'; colors: ReturnType<typeof getThemePalette>; setPreferences: (next: Preferences) => Promise<void> };
 const ThemeContext = createContext<ThemeState | null>(null);
 
 /** Loads the saved appearance preferences and provides a shared palette to UI components. */
@@ -22,7 +23,9 @@ export function ThemeProvider({ children }: PropsWithChildren) {
     setPreferencesState(next);
   }
   const resolvedMode = preferences.mode === 'system' ? (systemMode === 'dark' ? 'dark' : 'light') : preferences.mode;
-  const value = useMemo(() => ({ ...preferences, colors: getThemePalette(preferences.name, resolvedMode), setPreferences }), [preferences, resolvedMode]);
+  // Existing screens share this token object; update it once when preferences change.
+  Object.assign(sharedColors, getThemePalette(preferences.name, resolvedMode));
+  const value = useMemo(() => ({ ...preferences, resolvedMode, colors: getThemePalette(preferences.name, resolvedMode), setPreferences }), [preferences, resolvedMode]);
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
 

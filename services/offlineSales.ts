@@ -36,6 +36,7 @@ export async function saveOfflineSale(input: Omit<OfflineSalePayload, 'id' | 'us
 /** Retries queued sales using a server idempotency key and records permanent errors for review. */
 export async function syncOfflineSales(userId: string) {
   const db = await SQLite.openDatabaseAsync('sellora.db');
+  await db.runAsync("UPDATE offline_sales SET status='pending' WHERE user_id=? AND status='syncing'",userId);
   const queued = await db.getAllAsync<{ id: string; payload: string; attempt_count: number }>("SELECT id,payload,attempt_count FROM offline_sales WHERE user_id=? AND status IN ('pending','failed') ORDER BY created_at LIMIT 20", userId);
   let syncedAny = false;
   for (const row of queued) {

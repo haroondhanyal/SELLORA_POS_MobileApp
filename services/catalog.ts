@@ -146,7 +146,7 @@ export async function listCachedBranchWarehouses(branchId: string) {
 export async function listSellableItems(warehouseId: string): Promise<SellableProduct[]> {
   const client = requireSupabase();
   const [productResult, variantResult, stockResult] = await Promise.all([
-    client.from('products').select('id, name, sku, barcode, category_id, brand_id, image_storage_path, cost_price, sale_price, tax_rate').eq('is_active', true).order('name').limit(500),
+    client.from('products').select('id, name, sku, barcode, category_id, brand_id, image_storage_path, cost_price, sale_price, tax_rate, minimum_stock, reorder_level').eq('is_active', true).order('name').limit(500),
     client.from('product_variants').select('id, product_id, name, sku, barcode, sale_price, cost_price').eq('is_active', true),
     client.from('inventory').select('product_id, variant_id, quantity').eq('warehouse_id', warehouseId),
   ]);
@@ -164,7 +164,7 @@ export async function listSellableItems(warehouseId: string): Promise<SellablePr
       sellable.push({
         productId: product.id, variantId: null, name: product.name, sku: product.sku, barcode: product.barcode,
         categoryId: product.category_id, brandId: product.brand_id,
-        price: Number(product.sale_price), costPrice: Number(product.cost_price), taxRate: Number(product.tax_rate),
+        price: Number(product.sale_price), costPrice: Number(product.cost_price), taxRate: Number(product.tax_rate), minimumStock: Number(product.minimum_stock), reorderLevel: Number(product.reorder_level),
         imagePath: product.image_storage_path, quantityAvailable: stock.get(`${product.id}:base`) ?? 0,
       });
       continue;
@@ -175,6 +175,7 @@ export async function listSellableItems(warehouseId: string): Promise<SellablePr
         sku: variant.sku, barcode: variant.barcode, price: Number(variant.sale_price ?? product.sale_price),
         categoryId: product.category_id, brandId: product.brand_id,
         costPrice: Number(variant.cost_price ?? product.cost_price), taxRate: Number(product.tax_rate),
+        minimumStock: Number(product.minimum_stock), reorderLevel: Number(product.reorder_level),
         imagePath: product.image_storage_path, quantityAvailable: stock.get(`${product.id}:${variant.id}`) ?? 0,
       });
     }

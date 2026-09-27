@@ -1,12 +1,18 @@
 # Sellora Mobile
 
+<p align="center">
+  <img src="./assets/branding/logo.svg" width="720" alt="SELLORA — Sell Smarter. Manage Anywhere." />
+</p>
+
+<p align="center"><strong>Sell Smarter. Manage Anywhere.</strong><br/>Mobile retail, point of sale and inventory management for Android and iOS.</p>
+
 Expo + React Native + TypeScript application for Android and iOS. Each major feature has its own Expo Router screen. Shared UI, app state, Supabase services, theme tokens and SQLite live in separate folders.
 
 ## Current scope
 
 Phases 1–12 include Sellora launch branding; authentication and user access; catalog/inventory; POS/customers; currency; branches/purchasing; returns/credit/loyalty/expenses; shifts/targets/commissions; approvals/notifications/reports/audit; offline POS sync; AI copilot and backup export.
 
-Phase 11 provides offline POS queueing for previously cached products and stock. Full offline customer management, inventory actions, conflict resolution and realtime synchronization remain later improvements.
+Phase 11 stores offline customers and sales, caches branch stock for read-only inventory, and retries online synchronization. Manual conflict resolution and offline inventory edits remain limited.
 
 ## Run locally
 
@@ -26,6 +32,7 @@ Phase 11 provides offline POS queueing for previously cached products and stock.
    - `202609270009_approvals_notifications_reports_audit.sql`
    - `202609270010_offline_sync.sql`
    - `202609270011_backup_export.sql`
+   - `202609270012_phase_completion.sql`
 
 5. Enable email authentication in Supabase. Add `sellora://auth/pending-approval` and `sellora://auth/reset-password` to the allowed redirect URLs.
 6. Run `npx expo start`; press `a` for Android or `i` for iOS.
@@ -55,33 +62,35 @@ After the first admin signs in:
 - Returns are looked up by receipt. The database validates available return quantities, restores inventory and records the refund in one transaction. Full return marks the original sale refunded.
 - Cashiers can receive customer credit payments. Each payment is checked against outstanding balance and updates the balance atomically.
 - Completed customer sales award one loyalty point per 100 base-currency units. Points are stored in a ledger and displayed on the customer record.
-- Branch expenses have permission-protected entry and history screens. Receipt-image attachments and store-credit redemption are not included yet.
+- Branch expenses include receipt images in a private 25 MB limited bucket. Loyalty points can be redeemed in multiples of 100 for base-currency store credit.
 
 ## Phase 9 — Workforce, targets and commissions
 
 - Employees open and close their own shifts. Cash reconciliation compares opening cash plus recorded cash payments against the close count.
 - Managers can assign daily, weekly or monthly sales targets to approved agents.
 - A branch percentage commission rule applies to future sales and writes an immutable commission snapshot.
+- Target screens compare completed sales with the assigned daily, weekly or monthly target. Shifts include documented cash-in and cash-out movements in closeout reconciliation.
 
 ## Phase 10 — Approvals, notifications, reports and audit
 
 - Staff can submit an approval request. Authorized reviewers can approve/reject it with an optional note; requesters receive an in-app notification.
 - New signup and account approval changes generate notification records.
-- Sales summary reports calculate real branch revenue, discounts and sales-agent totals from recorded transactions. Reports obey sales row-level security.
-- Sale, refund, expense and approval decisions create audit events. Authorized users can review branch activity.
+- Separate summary and detailed reports calculate revenue, discounts, line margin, expenses, refunds, commissions, product/category, customer, agent and cashier breakdowns. Reports obey sales row-level security.
+- Notifications update live through Supabase Realtime. Sale, refund, expense, cash movement, credit payment, transfer and approval decisions create audit events.
 
 ## Phase 11 — Offline POS and queued sale sync
 
-- POS catalogue and warehouse selection are cached in SQLite after an online load. In Offline Mode, cached product search and stock are available.
-- Offline receipts and stock decrements are committed locally. Customer/store credit are blocked while offline.
+- POS catalogue, warehouse selection, branch customers, sales agents and inventory snapshots are cached in SQLite after online use. In Offline Mode, product/customer search and inventory viewing are available.
+- Offline customer records and receipts are committed locally; new customers synchronize before dependent sales. Stock decrements update the local snapshot. Customer/store credit and receipt-photo uploads are blocked while offline.
 - When connected and in Online Mode, sales upload through an idempotent database function. Failed uploads remain visible with their last error; retrying cannot duplicate a sale.
-- Offline customer lookup/creation, standalone inventory caching, manual conflict resolution and realtime subscriptions are not implemented yet. The server revalidates price and stock on sync; staff should review any failed queue item.
+- Local customer updates, inventory adjustments, manual conflict resolution and offline shifts are not supported. The server revalidates price and stock on sync; staff should review failed queue items.
 
 ## Phase 12 — Copilot, backup and release setup
 
 - Sellora Copilot is a Supabase Edge Function. It reads aggregates using the caller's RLS-limited session and sends no customer names or profile data to the AI provider. Configure `OPENAI_API_KEY` and optionally `SELLORA_AI_MODEL` as Edge Function secrets, then deploy `sellora-ai-copilot`.
 - Approved admins can export a JSON snapshot through a database function and the native share sheet. Exports include sensitive employee/customer records; storage images are not part of the snapshot. Keep routine Supabase backups enabled as well.
 - Production release still requires real Supabase credentials, applying and reviewing all migrations, Edge Function deployment/secrets, an app icon and native splash image, and device QA. Automated tests and full offline reconciliation are not included.
+- Appearance supports the Sellora, Ocean, Emerald, Purple, Midnight, Sunset and Monochrome palettes, each in system, light and dark modes.
 
 ## Structure
 
@@ -100,10 +109,12 @@ app/transfers/       Inter-branch stock transfer workflow
 app/purchases/       Purchase orders and goods-received notes
 app/suppliers/       Branch supplier records
 app/settings/        Currency settings and rates
+app/settings/        Appearance, backup and offline sync settings
 app/ai/              Authenticated retail copilot
 app/approvals/       Approval requests and review
 app/notifications/   Personal notifications
 app/reports/         Branch sales report and audit history
+app/reports/details.tsx Financial and operational breakdowns
 app/shifts/          Employee shift and cash drawer
 app/targets/         Sales-agent targets and commission rules
 components/          Reused native UI fields, cards and buttons

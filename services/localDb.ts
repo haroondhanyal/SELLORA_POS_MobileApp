@@ -39,6 +39,19 @@ export async function initializeLocalDatabase(db: SQLiteDatabase) {
       payload TEXT NOT NULL,
       PRIMARY KEY (branch_id, id)
     );
+    CREATE TABLE IF NOT EXISTS cached_customers (
+      branch_id TEXT NOT NULL, id TEXT NOT NULL, payload TEXT NOT NULL,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(branch_id,id)
+    );
+    CREATE TABLE IF NOT EXISTS cached_sales_agents (
+      branch_id TEXT NOT NULL, id TEXT NOT NULL, full_name TEXT NOT NULL,
+      PRIMARY KEY(branch_id,id)
+    );
+    CREATE TABLE IF NOT EXISTS offline_customers (
+      id TEXT PRIMARY KEY NOT NULL, user_id TEXT NOT NULL, branch_id TEXT NOT NULL, payload TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','syncing','synced','failed')),
+      last_error TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, synced_at TEXT
+    );
     CREATE TABLE IF NOT EXISTS offline_sales (
       id TEXT PRIMARY KEY NOT NULL,
       user_id TEXT NOT NULL,
@@ -56,6 +69,6 @@ export async function initializeLocalDatabase(db: SQLiteDatabase) {
 /** Reads a count for the pressable connection status sheet. */
 export async function getPendingSyncCount() {
   const db = await SQLite.openDatabaseAsync('sellora.db');
-  const result = await db.getFirstAsync<{ count: number }>("SELECT (SELECT count(*) FROM sync_queue WHERE status = 'pending') + (SELECT count(*) FROM offline_sales WHERE status IN ('pending','failed')) as count");
+  const result = await db.getFirstAsync<{ count: number }>("SELECT (SELECT count(*) FROM sync_queue WHERE status = 'pending') + (SELECT count(*) FROM offline_sales WHERE status IN ('pending','failed','syncing')) + (SELECT count(*) FROM offline_customers WHERE status IN ('pending','failed','syncing')) as count");
   return result?.count ?? 0;
 }

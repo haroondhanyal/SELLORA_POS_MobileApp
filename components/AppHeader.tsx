@@ -20,7 +20,7 @@ export function AppHeader({ profile }: { profile: UserProfile | null }) {
 
   useEffect(() => {
     let active = true;
-    const loadPending = () => db.getFirstAsync<{ count: number }>("SELECT (SELECT count(*) FROM sync_queue WHERE status = 'pending') + (SELECT count(*) FROM offline_sales WHERE status IN ('pending','failed')) as count")
+    const loadPending = () => db.getFirstAsync<{ count: number }>("SELECT (SELECT count(*) FROM sync_queue WHERE status = 'pending') + (SELECT count(*) FROM offline_sales WHERE status IN ('pending','failed','syncing')) + (SELECT count(*) FROM offline_customers WHERE status IN ('pending','failed','syncing')) as count")
       .then((row) => { if (active) setPending(row?.count ?? 0); })
       .catch(() => {});
     void loadPending();

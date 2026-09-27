@@ -1,5 +1,110 @@
-import{useCallback,useEffect,useState}from'react';import{Alert,Pressable,StyleSheet,Text,View}from'react-native';import{Redirect}from'expo-router';import{useSQLiteContext}from'expo-sqlite';import{AppButton}from'@/components/AppButton';import{AppHeader}from'@/components/AppHeader';import{Screen}from'@/components/Screen';import{useAuth}from'@/providers/AuthProvider';import{useConnection}from'@/providers/ConnectionProvider';import{useOfflineSync}from'@/providers/OfflineSyncProvider';import{listOfflineSales,type OfflineSalePayload}from'@/services/offlineSales';import{colors}from'@/theme/colors';
+import { useCallback, useEffect, useState } from 'react';
+import { Alert, StyleSheet, Text, View } from 'react-native';
+import { Redirect } from 'expo-router';
+import { useSQLiteContext } from 'expo-sqlite';
+import { AppButton } from '@/components/AppButton';
+import { AppHeader } from '@/components/AppHeader';
+import { Screen } from '@/components/Screen';
+import { useAuth } from '@/providers/AuthProvider';
+import { useConnection } from '@/providers/ConnectionProvider';
+import { useOfflineSync } from '@/providers/OfflineSyncProvider';
+import { listOfflineCustomers } from '@/services/customers';
+import { listOfflineSales, type OfflineSalePayload } from '@/services/offlineSales';
+import { colors } from '@/theme/colors';
 
-/** Shows local receipt delivery state and lets staff retry failed uploads when online. */
-export default function SyncQueueScreen(){const{profile,session,locked}=useAuth();const{mode,connected}=useConnection();const{refresh,syncing}=useOfflineSync();const db=useSQLiteContext();const[rows,setRows]=useState<Awaited<ReturnType<typeof listOfflineSales>>>([]);const[lastSync,setLastSync]=useState<string|null>(null);const load=useCallback(async()=>{try{setRows(await listOfflineSales());const saved=await db.getFirstAsync<{value:string}>('SELECT value FROM app_settings WHERE key=?','last_sync_at');setLastSync(saved?.value??null);}catch(error){Alert.alert('Could not load sync queue',error instanceof Error?error.message:'Please retry.');}},[db]);useEffect(()=>{void load();const timer=setInterval(()=>void load(),4000);return()=>clearInterval(timer);},[load]);async function retry(){if(mode!=='online'||!connected){Alert.alert('Connect to sync','Switch to Online Mode and connect to the internet first.');return;}await refresh();await load();}if(locked)return<Redirect href="/auth/pin-login"/>;if(!session)return<Redirect href="/auth/login"/>;const ownRows=rows.filter(row=>row.user_id===session.user.id);return<Screen><View style={styles.page}><AppHeader profile={profile}/><Text style={styles.title}>Offline & sync</Text><Text style={styles.help}>Mode: {mode} · Network: {connected?'connected':'not connected'}</Text><Text style={styles.help}>Last successful sync: {lastSync?new Date(lastSync).toLocaleString():'Not synced yet'}</Text><AppButton title={syncing?'Syncing…':'Sync pending sales'} onPress={retry} disabled={syncing}/>{ownRows.map((row)=>{const sale=JSON.parse(row.payload) as OfflineSalePayload;return <View key={row.id} style={styles.card}><Text style={styles.name}>Local receipt {row.id.slice(0,8).toUpperCase()}</Text><Text style={styles.help}>{sale.items.length} items · {sale.total.toFixed(2)} {sale.currency} · {new Date(row.created_at).toLocaleString()}</Text><Text style={[styles.status,row.status==='failed'&&styles.failed]}>{row.status.toUpperCase()} · attempts {row.attempt_count}</Text>{row.last_error?<Text style={styles.error}>{row.last_error}</Text>:null}{row.server_sale_id?<Text style={styles.help}>Server sale: {row.server_sale_id}</Text>:null}</View>})}{!ownRows.length?<Text style={styles.help}>No offline sales are waiting to sync.</Text>:null}</View></Screen>;}
-const styles=StyleSheet.create({page:{paddingBottom:30},title:{color:colors.navy,fontSize:27,fontWeight:'800',marginTop:24},help:{color:colors.muted,marginTop:6,lineHeight:21},card:{backgroundColor:'white',borderWidth:1,borderColor:colors.border,borderRadius:14,padding:15,marginTop:12},name:{color:colors.navy,fontWeight:'800'},status:{color:colors.tealDark,fontWeight:'800',fontSize:12,marginTop:9},failed:{color:colors.danger},error:{color:colors.danger,fontSize:12,marginTop:6,lineHeight:18}});
+/** Shows queued local records and lets staff retry delivery when online. */
+export default function SyncQueueScreen() {
+  const { profile, session, locked } = useAuth();
+  const { mode, connected } = useConnection();
+  const { refresh, syncing } = useOfflineSync();
+  const db = useSQLiteContext();
+  const [sales, setSales] = useState<Awaited<ReturnType<typeof listOfflineSales>>>([]);
+  const [customers, setCustomers] = useState<Awaited<ReturnType<typeof listOfflineCustomers>>>([]);
+  const [lastSync, setLastSync] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    if (!session?.user.id) return;
+    try {
+      const [saleRows, customerRows, saved] = await Promise.all([
+        listOfflineSales(),
+        listOfflineCustomers(session.user.id),
+        db.getFirstAsync<{ value: string }>('SELECT value FROM app_settings WHERE key=?', 'last_sync_at'),
+      ]);
+      setSales(saleRows.filter((row) => row.user_id === session.user.id));
+      setCustomers(customerRows);
+      setLastSync(saved?.value ?? null);
+    } catch (error) {
+      Alert.alert('Could not load sync queue', error instanceof Error ? error.message : 'Please retry.');
+    }
+  }, [db, session?.user.id]);
+
+  useEffect(() => {
+    void load();
+    const timer = setInterval(() => void load(), 4000);
+    return () => clearInterval(timer);
+  }, [load]);
+
+  async function retry() {
+    if (mode !== 'online' || !connected) {
+      Alert.alert('Connect to sync', 'Switch to Online Mode and connect to the internet first.');
+      return;
+    }
+    await refresh();
+    await load();
+  }
+
+  if (locked) return <Redirect href="/auth/pin-login" />;
+  if (!session) return <Redirect href="/auth/login" />;
+
+  return (
+    <Screen>
+      <View style={styles.page}>
+        <AppHeader profile={profile} />
+        <Text style={styles.title}>Offline & sync</Text>
+        <Text style={styles.help}>Mode: {mode} · Network: {connected ? 'connected' : 'not connected'}</Text>
+        <Text style={styles.help}>Last successful sync: {lastSync ? new Date(lastSync).toLocaleString() : 'Not synced yet'}</Text>
+        <AppButton title={syncing ? 'Syncing…' : 'Sync pending records'} onPress={retry} disabled={syncing} />
+
+        <Text style={styles.section}>Offline customers</Text>
+        {customers.map((row) => {
+          const customer = JSON.parse(row.payload) as { full_name: string };
+          return (
+            <View key={row.id} style={styles.card}>
+              <Text style={styles.name}>{customer.full_name}</Text>
+              <Text style={[styles.status, row.status === 'failed' && styles.failed]}>{row.status.toUpperCase()}</Text>
+              {row.last_error ? <Text style={styles.error}>{row.last_error}</Text> : null}
+            </View>
+          );
+        })}
+        {!customers.length ? <Text style={styles.help}>No local customer records are waiting.</Text> : null}
+
+        <Text style={styles.section}>Offline sales</Text>
+        {sales.map((row) => {
+          const sale = JSON.parse(row.payload) as OfflineSalePayload;
+          return (
+            <View key={row.id} style={styles.card}>
+              <Text style={styles.name}>Local receipt {row.id.slice(0, 8).toUpperCase()}</Text>
+              <Text style={styles.help}>{sale.items.length} items · {sale.total.toFixed(2)} {sale.currency} · {new Date(row.created_at).toLocaleString()}</Text>
+              <Text style={[styles.status, row.status === 'failed' && styles.failed]}>{row.status.toUpperCase()} · attempts {row.attempt_count}</Text>
+              {row.last_error ? <Text style={styles.error}>{row.last_error}</Text> : null}
+              {row.server_sale_id ? <Text style={styles.help}>Server sale: {row.server_sale_id}</Text> : null}
+            </View>
+          );
+        })}
+        {!sales.length ? <Text style={styles.help}>No offline sales are waiting to sync.</Text> : null}
+      </View>
+    </Screen>
+  );
+}
+
+const styles = StyleSheet.create({
+  page: { paddingBottom: 30 },
+  title: { color: colors.navy, fontSize: 27, fontWeight: '800', marginTop: 24 },
+  section: { color: colors.navy, fontSize: 19, fontWeight: '800', marginTop: 24 },
+  help: { color: colors.muted, marginTop: 6, lineHeight: 21 },
+  card: { backgroundColor: 'white', borderWidth: 1, borderColor: colors.border, borderRadius: 14, padding: 15, marginTop: 12 },
+  name: { color: colors.navy, fontWeight: '800' },
+  status: { color: colors.tealDark, fontWeight: '800', fontSize: 12, marginTop: 9 },
+  failed: { color: colors.danger },
+  error: { color: colors.danger, fontSize: 12, marginTop: 6, lineHeight: 18 },
+});

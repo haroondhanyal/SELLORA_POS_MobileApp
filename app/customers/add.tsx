@@ -10,13 +10,15 @@ import { OptionPicker } from '@/components/OptionPicker';
 import { ProfileImagePicker } from '@/components/ProfileImagePicker';
 import { Screen } from '@/components/Screen';
 import { useAuth } from '@/providers/AuthProvider';
-import { createCustomer, listBranchSalesAgents } from '@/services/customers';
+import { useConnection } from '@/providers/ConnectionProvider';
+import { createCustomer, listBranchSalesAgents, queueOfflineCustomer } from '@/services/customers';
 import { colors } from '@/theme/colors';
 
 /** Phase 5 customer form for a named, branch-owned customer record. */
 export default function AddCustomerScreen() {
   const params = useLocalSearchParams<{ returnTo?: string }>();
   const { profile, permissionCodes, session, locked } = useAuth();
+  const { mode } = useConnection();
   const [name, setName] = useState('');
   const [countryCode, setCountryCode] = useState('+92');
   const [phone, setPhone] = useState('');
@@ -43,7 +45,7 @@ export default function AddCustomerScreen() {
     }
     setBusy(true);
     try {
-      const customerId = await createCustomer({
+      const customerInput = {
         branch_id: profile.primary_branch_id,
         full_name: name.trim(),
         phone: phone.trim() ? `${countryCode} ${phone.trim()}` : null,
@@ -53,7 +55,11 @@ export default function AddCustomerScreen() {
         credit_limit: parsedLimit,
         assigned_sales_agent_id: agentId,
         photoUri,
-      });
+      };
+      if (mode === 'offline' && photoUri) throw new Error('Customer photos require an online connection. Save the customer first, then add the photo online.');
+      const customerId = mode === 'offline'
+        ? await queueOfflineCustomer({ ...customerInput, userId: profile.id })
+        : await createCustomer(customerInput);
       Alert.alert('Customer saved', 'The customer is available in this branch.', [{
         text: params.returnTo === 'pos-cart' ? 'Return to cart' : 'View customers',
         onPress: () => params.returnTo === 'pos-cart'
@@ -83,7 +89,7 @@ export default function AddCustomerScreen() {
         <DatePickerField label="Date of birth (optional)" value={dateOfBirth} onChange={setDateOfBirth} />
         <FormField label="Credit limit" value={creditLimit} onChangeText={setCreditLimit} keyboardType="decimal-pad" />
         <OptionPicker label="Assigned sales agent (optional)" value={agentId} options={agents.map((agent) => ({ id: agent.id, label: agent.full_name }))} onChange={setAgentId} allowNone />
-        <ProfileImagePicker uri={photoUri} onChange={setPhotoUri} label="Customer photo (optional)" />
+        {mode === 'offline' ? <Text style={styles.help}>Offline customer records sync before their queued sale. Photos can be added when online.</Text> : <ProfileImagePicker uri={photoUri} onChange={setPhotoUri} label="Customer photo (optional)" />}
         <AppButton title="Save customer" onPress={save} busy={busy} />
       </View>
     </Screen>

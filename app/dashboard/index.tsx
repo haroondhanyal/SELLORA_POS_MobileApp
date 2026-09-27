@@ -73,6 +73,7 @@ export default function DashboardScreen() {
         {permissionCodes.includes('returns.manage') ? <AppButton title="Returns & refunds" onPress={() => router.push('/returns')} secondary /> : null}
         {canViewExpenses ? <AppButton title="Expenses" onPress={() => router.push('/expenses')} secondary /> : null}
         {permissionCodes.includes('customers.credit.manage') ? <AppButton title="Customer credit payments" onPress={() => router.push('/customers/payments')} secondary /> : null}
+        {permissionCodes.includes('customers.manage') ? <AppButton title="Loyalty rewards" onPress={() => router.push('/customers/loyalty')} secondary /> : null}
         {permissionCodes.includes('shifts.manage') ? <AppButton title="My shift & cash drawer" onPress={() => router.push('/shifts')} secondary /> : null}
         {permissionCodes.includes('targets.manage') || permissionCodes.includes('sales.view_own') ? <AppButton title="Sales targets" onPress={() => router.push('/targets')} secondary /> : null}
         {permissionCodes.includes('commissions.view') ? <AppButton title="Commissions" onPress={() => router.push('/commissions')} secondary /> : null}
@@ -80,10 +81,12 @@ export default function DashboardScreen() {
         {permissionCodes.includes('approvals.request') ? <AppButton title="Request approval" onPress={() => router.push('/approvals/request')} secondary /> : null}
         {permissionCodes.includes('notifications.view') ? <AppButton title="Notifications" onPress={() => router.push('/notifications')} secondary /> : null}
         {permissionCodes.includes('reports.view') || permissionCodes.includes('audit.view') ? <AppButton title="Reports & audit" onPress={() => router.push('/reports')} secondary /> : null}
+        {permissionCodes.includes('reports.view') ? <AppButton title="Detailed sales report" onPress={() => router.push('/reports/details')} secondary /> : null}
         <AppButton title="Offline & sync queue" onPress={() => router.push('/settings/sync')} secondary />
         {permissionCodes.includes('reports.view') || permissionCodes.includes('sales.view_own') ? <AppButton title="Sellora Copilot" onPress={() => router.push('/ai')} secondary /> : null}
         {profile.role === 'admin' ? <AppButton title="Business backup" onPress={() => router.push('/settings/backup')} secondary /> : null}
         <AppButton title="Currency settings" onPress={() => router.push('/settings/currency')} secondary />
+        <AppButton title="Appearance" onPress={() => router.push('/settings/appearance')} secondary />
         <AppButton title="Edit profile & PIN" onPress={() => router.push('/profile')} secondary />
 
         <View style={styles.bottom}>
