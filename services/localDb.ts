@@ -18,6 +18,14 @@ export async function initializeLocalDatabase(db: SQLiteDatabase) {
       status TEXT NOT NULL DEFAULT 'pending',
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
+    CREATE TABLE IF NOT EXISTS exchange_rate_cache (
+      base_currency TEXT NOT NULL,
+      quote_currency TEXT NOT NULL,
+      rate REAL NOT NULL CHECK (rate > 0),
+      source TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (base_currency, quote_currency)
+    );
   `);
 }
 
