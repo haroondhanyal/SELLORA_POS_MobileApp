@@ -10,6 +10,7 @@
       "expo-router",
       ["expo-splash-screen", { "backgroundColor": "#102C3A" }],
       ["expo-image-picker", { "photosPermission": "Sellora uses your photo library for your profile picture.", "cameraPermission": "Sellora uses your camera to take a profile picture.", "microphonePermission": false }],
+      ["expo-camera", { "cameraPermission": "Sellora uses your camera to scan product barcodes.", "microphonePermission": false, "recordAudioAndroid": false }],
       "expo-secure-store",
       "expo-sqlite"
     ],
