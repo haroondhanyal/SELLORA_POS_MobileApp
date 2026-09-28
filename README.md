@@ -24,12 +24,6 @@ Sellora brings checkout, stock, purchasing, customer accounts, staff access and 
 | **Flexible access** | A read-only guest tour, device PIN unlock, optional Remember me on the sign-in screen, and an app drawer for navigation and account actions. |
 | **Offline work** | Cached product and branch data plus encrypted queues for supported sales, customers, expenses and product edits; queued sales are checked by the server when they sync. |
 
-## Screenshots
-
-| App launch | Administrator workspace |
-| --- | --- |
-| ![Sellora splash screen](docs/screenshots/sellora-splash.jpeg) | ![Administrator dashboard with account requests, team online status and cashier sales](docs/screenshots/admin-dashboard.jpeg) |
-
 ## How it is built
 
 - **Mobile app:** Expo Router, React Native, TypeScript and SQLite for encrypted offline data and queued work.
@@ -146,6 +140,7 @@ Run these from the repository root:
 ```sh
 npm run typecheck
 npm run api:build
+npx expo export --platform android
 npm audit
 npm --prefix backend audit
 git diff --check

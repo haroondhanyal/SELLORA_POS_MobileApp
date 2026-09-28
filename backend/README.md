@@ -54,8 +54,11 @@ available. Never ship `DATABASE_URL` or `BETTER_AUTH_SECRET` in Expo configurati
 
 The app's email/password auth, PostgREST data requests, private image storage, and
 business insights now target the local Sellora API. Realtime screens refresh by
-polling. The local PostgreSQL database currently contains schema only; existing
-Supabase account password hashes and business records have not been imported. The setup helper enables local `pgcrypto`, and Better Auth can verify imported bcrypt hashes while continuing to create new scrypt hashes. Importing user rows and business data still requires a source export and a reviewed mapping.
+polling. This is a separate Sellora PostgreSQL database; existing Supabase account
+password hashes and business records have not been imported. The setup helper
+enables local `pgcrypto`, and Better Auth can verify imported bcrypt hashes while
+continuing to create new scrypt hashes. Importing user rows and business data still
+requires a source export and a reviewed mapping.
 Before replacing the old service in production, export and import its existing
 users and business records. This repository does not contain that export, so the
 current database is a fresh business database. Imported bcrypt accounts can retain
@@ -74,6 +77,52 @@ The local `/health` route completed a 60-second run with 1,000 virtual users:
 59,784 requests, zero failures, p95 8 ms and p99 15 ms on the development host.
 This only measures the API/database health path; it does not establish capacity
 for 1,000 authenticated accounts or checkout traffic.
+
+## Full database and private-file backups
+
+Database rows contain paths to private media, so preserve PostgreSQL and
+`STORAGE_ROOT` as one recovery set. Use a separate database-owner/backup connection
+for `pg_dump`. The runtime `sellora_api` credential is deliberately restricted by
+row-level security and may fail to dump tables or produce an incomplete backup.
+Keep the backup connection in a root-owned `0600` server env file, never in Expo
+configuration or shell history. Store backup archives on encrypted storage with
+access controls and an offsite copy.
+
+Pause writes or use a coordinated filesystem snapshot while taking the two parts
+so the database and media tree represent the same recovery point. Example commands
+on the database host (set `BACKUP_DATABASE_URL` in the protected server environment
+first):
+
+```sh
+cd /opt/sellora/backend
+umask 077
+backup_dir=/var/backups/sellora
+stamp=$(date -u +%Y%m%dT%H%M%SZ)
+mkdir -p "$backup_dir"
+mkdir "$backup_dir/$stamp"
+chmod 700 "$backup_dir/$stamp"
+pg_dump --dbname="$BACKUP_DATABASE_URL" --format=custom --no-owner --no-acl \
+  --file="$backup_dir/$stamp/database.dump"
+tar -czf "$backup_dir/$stamp/storage.tar.gz" -C "$STORAGE_ROOT" .
+chmod 600 "$backup_dir/$stamp"/*
+```
+
+For a restore drill, set `RESTORE_DATABASE_URL` to a **new empty test database** on
+an isolated PostgreSQL instance. Never test by overwriting production. Restore the
+database, extract the files into a new directory, compare the restored table set
+and file hashes, then verify the app can read representative records and media:
+
+```sh
+pg_restore --dbname="$RESTORE_DATABASE_URL" --no-owner --no-acl --exit-on-error \
+  "$backup_dir/$stamp/database.dump"
+restore_dir=$(mktemp -d)
+tar -xzf "$backup_dir/$stamp/storage.tar.gz" -C "$restore_dir"
+```
+
+Keep the test copy private and remove it after validation. A restore test on the
+current development data succeeded: 48 public tables restored and all 6 local
+private files passed SHA-256 comparison. Schedule the same drill against production
+after provisioning it.
 
 Password reset uses a local sendmail-compatible command so the server can use its
 own configured mail transfer agent without a provider SDK. Install and configure a
