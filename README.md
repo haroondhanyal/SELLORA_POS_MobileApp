@@ -4,9 +4,25 @@
   <img src="assets/branding/logo.svg" alt="Sellora — Sell Smarter. Manage Anywhere." width="520" />
 </p>
 
+<p align="center">
+  <img src="https://img.shields.io/badge/Expo-57.0-000020?logo=expo" alt="Expo 57" />
+  <img src="https://img.shields.io/badge/React_Native-0.86-61DAFB?logo=react" alt="React Native 0.86" />
+  <img src="https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript" alt="TypeScript 5.9" />
+  <img src="https://img.shields.io/badge/Node.js-22.13%2B-339933?logo=nodedotjs" alt="Node.js 22.13 or later" />
+</p>
+
 **A mobile point of sale and retail operations workspace for independent teams.**
 
 Sellora brings checkout, stock, purchasing, customer accounts, staff access and business reporting into one Expo app. It supports online work through the Sellora API and queues selected work securely when a device is offline.
+
+<p align="center">
+  <a href="#what-you-can-do">Features</a> ·
+  <a href="#product-details">Product details</a> ·
+  <a href="#how-it-is-built">Architecture</a> ·
+  <a href="#run-locally">Get started</a> ·
+  <a href="#security-and-production-readiness">Security</a> ·
+  <a href="#deployment-and-data-migration">Deployment</a>
+</p>
 
 <p align="center">
   <img src="docs/screenshots/sellora-splash.jpeg" alt="Sellora app splash screen" width="34%" />
@@ -49,6 +65,22 @@ Sellora brings checkout, stock, purchasing, customer accounts, staff access and 
 - **Deployment:** Local development or Linux systemd/Nginx templates under [`deploy/`](deploy/). Docker is not required.
 
 Supabase is not required at runtime. The historical schema and policy migrations remain under `supabase/migrations/`; active self-hosted database migrations are under [`backend/migrations/`](backend/migrations/).
+
+### System architecture
+
+```mermaid
+flowchart LR
+    app[Sellora mobile app] -->|Auth and business API| api[Express API]
+    api --> auth[Better Auth]
+    auth --> db[(PostgreSQL)]
+    api -->|REST proxy| rest[PostgREST]
+    rest --> db
+    api --> files[(Private media storage)]
+    app --> local[(Encrypted device SQLite)]
+    local -. queued work after reconnect .-> api
+```
+
+The mobile app uses the API for sign-in, profiles and authorized business requests. PostgREST and PostgreSQL enforce row-level access, while files stay behind authenticated storage routes. SQLite supports the offline queue and previously cached data.
 
 ## Run locally
 
