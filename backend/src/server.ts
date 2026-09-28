@@ -17,6 +17,14 @@ const allowedRoles = [
 ] as const;
 
 app.disable('x-powered-by');
+app.use((_request, response, next) => {
+  response.setHeader('X-Content-Type-Options', 'nosniff');
+  response.setHeader('X-Frame-Options', 'DENY');
+  response.setHeader('Referrer-Policy', 'no-referrer');
+  response.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  response.setHeader('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'; base-uri 'none'");
+  next();
+});
 app.use(cors({ origin: config.trustedOrigins, credentials: true }));
 
 // Better Auth must receive the raw request body before JSON middleware consumes it.

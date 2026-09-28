@@ -130,10 +130,14 @@ PostgREST port 4101 to the public internet.
    PostgREST config with restrictive permissions; give `/var/lib/sellora/postgrest`
    to the `sellora` service user after the helper finishes so systemd can read it.
 4. Copy `deploy/systemd/sellora-api.service` and
-   `deploy/systemd/sellora-postgrest.service` to `/etc/systemd/system/`. Copy
-   `deploy/nginx/sellora-api.conf.example` to an Nginx site config and replace
-   `api.example.com` and certificate paths. Enable HTTPS and verify Nginx config
-   before enabling the systemd services.
+   `deploy/systemd/sellora-postgrest.service` to `/etc/systemd/system/`. Install
+   `deploy/nginx/conf.d/sellora-rate-limits.conf` under `/etc/nginx/conf.d/` and
+   `deploy/nginx/snippets/sellora-proxy-headers.conf` under
+   `/etc/nginx/snippets/`. Copy `deploy/nginx/sellora-api.conf.example` to an Nginx
+   site config and replace `api.example.com` and certificate paths. The template
+   enforces HTTPS, security headers, API/auth request limits, and loopback proxying.
+   Run `sudo nginx -t` and fix any config errors before reloading Nginx or enabling
+   the systemd services.
 5. Start PostgREST and the API, then check `https://api.example.com/health` and
    `/api/auth/ok`. Set the app's `EXPO_PUBLIC_API_URL` to `https://api.example.com`,
    rebuild the Expo application, create the first user, and run the one-time admin
