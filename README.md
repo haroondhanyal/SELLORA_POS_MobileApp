@@ -1,5 +1,9 @@
 # Sellora
 
+<p align="center">
+  <img src="assets/branding/logo.svg" alt="Sellora — Sell Smarter. Manage Anywhere." width="520" />
+</p>
+
 **A mobile point of sale and retail operations workspace for independent teams.**
 
 Sellora brings checkout, stock, purchasing, customer accounts, staff access and business reporting into one Expo app. It supports online work through the Sellora API and queues selected work securely when a device is offline.
@@ -23,6 +27,18 @@ Sellora brings checkout, stock, purchasing, customer accounts, staff access and 
 | **Business overview** | Sales reports, cashier activity, targets, finance summaries, notifications and permission-scoped Sellora Insights. |
 | **Flexible access** | A read-only guest tour, device PIN unlock, optional Remember me on the sign-in screen, and an app drawer for navigation and account actions. |
 | **Offline work** | Cached product and branch data plus encrypted queues for supported sales, customers, expenses and product edits; queued sales are checked by the server when they sync. |
+
+## Product details
+
+**Checkout to receipt.** Find products, scan barcodes, review quantities and discounts, select a customer and sales agent, then record one or more payment methods. The server validates prices, stock and customer credit and commits each online sale atomically. Receipts, refunds and returns remain linked to the original sale.
+
+**Stock to replenishment.** Organize products by categories, brands and variants; attach private product photos; set reorder thresholds; and track quantities by branch and warehouse. Teams can record adjustments, receive purchase orders and move stock between assigned branches.
+
+**People to permissions.** Staff request access and wait for an administrator to review the account, role and branch assignment. The administrator workspace shows pending requests, team presence and synced cashier sales. Permission checks govern navigation and are enforced again by the API and database.
+
+**Daily operations and visibility.** Record customer/store-credit activity, expenses with receipts, shifts and cash movements. Review targets, commissions, audit history and sales reports from role- and branch-scoped views. Profile photos appear in the shared header and drawer for every role.
+
+**Online and offline.** Previously signed-in staff can unlock with their device PIN when disconnected. Supported catalog, customer, expense and sale work is stored in an encrypted local queue. Once connectivity returns, Sellora syncs queued work under the original user and rechecks server-side rules; unsupported administration and stock receiving require a live connection.
 
 ## How it is built
 
