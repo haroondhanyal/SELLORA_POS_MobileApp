@@ -8,7 +8,7 @@ import { OptionPicker } from '@/components/OptionPicker';
 import { Screen } from '@/components/Screen';
 import { useAuth } from '@/providers/AuthProvider';
 import { createWarehouse, listBranches, listWarehousesForBranch, type Branch, type Warehouse } from '@/services/branches';
-import { requireSupabase } from '@/services/supabase';
+import { requireDatabase } from '@/services/database';
 import { colors } from '@/theme/colors';
 
 type ManagerOption = { id: string; label: string };
@@ -38,7 +38,7 @@ export default function WarehousesScreen() {
     try {
       const [locations, peopleResult] = await Promise.all([
         listWarehousesForBranch(selectedBranch),
-        requireSupabase().from('profiles').select('id, full_name, role').eq('approval_status', 'approved').eq('primary_branch_id', selectedBranch).order('full_name'),
+        requireDatabase().from('profiles').select('id, full_name, role').eq('approval_status', 'approved').eq('primary_branch_id', selectedBranch).order('full_name'),
       ]);
       if (peopleResult.error) throw peopleResult.error;
       setWarehouses(locations);

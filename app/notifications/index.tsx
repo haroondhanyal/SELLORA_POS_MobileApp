@@ -5,10 +5,9 @@ import { AppHeader } from '@/components/AppHeader';
 import { Screen } from '@/components/Screen';
 import { useAuth } from '@/providers/AuthProvider';
 import { listNotifications, markNotificationRead } from '@/services/oversight';
-import { requireSupabase } from '@/services/supabase';
 import { colors } from '@/theme/colors';
 
-/** Personal notification center updated by Supabase Realtime. */
+/** Personal notification center refreshed from the local API periodically. */
 export default function NotificationsScreen() {
   const { profile, permissionCodes, session, locked } = useAuth();
   const [rows, setRows] = useState<any[]>([]);
@@ -20,10 +19,8 @@ export default function NotificationsScreen() {
   useEffect(() => {
     void load();
     if (!profile?.id) return;
-    const channel = requireSupabase().channel(`sellora-notifications-${profile.id}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${profile.id}` }, () => void load())
-      .subscribe();
-    return () => { void requireSupabase().removeChannel(channel); };
+    const timer = setInterval(() => void load(), 20_000);
+    return () => clearInterval(timer);
   }, [load, profile?.id]);
 
   async function read(row: any) {

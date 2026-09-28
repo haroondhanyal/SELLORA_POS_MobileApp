@@ -6,7 +6,7 @@ import { useTheme } from '@/theme/ThemeProvider';
 /** Consistent accessible button with a clear disabled/loading state. */
 export function AppButton({ title, onPress, busy = false, secondary = false, disabled = false }: { title: string; onPress: () => void; busy?: boolean; secondary?: boolean; disabled?: boolean }) {
   const theme = useTheme();
-  return <Pressable accessibilityRole="button" disabled={busy || disabled} onPress={onPress} style={({ pressed }) => [styles.button, { backgroundColor: secondary ? 'transparent' : theme.colors.teal, borderColor: theme.colors.border }, secondary && styles.secondary, secondary && { borderColor: theme.colors.border }, pressed && styles.pressed, (busy || disabled) && styles.disabled]}>
+  return <Pressable accessibilityRole="button" accessibilityLabel={title} accessibilityState={{ disabled: busy || disabled, busy }} disabled={busy || disabled} onPress={onPress} style={({ pressed }) => [styles.button, { backgroundColor: secondary ? 'transparent' : theme.colors.teal, borderColor: theme.colors.border }, secondary && styles.secondary, secondary && { borderColor: theme.colors.border }, pressed && styles.pressed, (busy || disabled) && styles.disabled]}>
     {busy ? <ActivityIndicator color={secondary ? theme.colors.navy : theme.colors.onAccent} /> : <Text style={[styles.label, { color: secondary ? theme.colors.navy : theme.colors.onAccent }]}>{title}</Text>}
   </Pressable>;
 }

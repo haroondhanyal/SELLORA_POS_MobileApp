@@ -7,7 +7,7 @@ import { FormField } from '@/components/FormField';
 import { Screen } from '@/components/Screen';
 import { useAuth } from '@/providers/AuthProvider';
 import { listBrands, listCategories, type SimpleCatalogEntry } from '@/services/catalog';
-import { requireSupabase } from '@/services/supabase';
+import { requireDatabase } from '@/services/database';
 import { colors } from '@/theme/colors';
 
 type CatalogType = 'categories' | 'brands';
@@ -40,7 +40,7 @@ export function CatalogOptionsManager({ type }: { type: CatalogType }) {
     }
     setBusy(true);
     try {
-      const { error } = await requireSupabase().from(tableName).insert({ name: name.trim(), description: description.trim() });
+      const { error } = await requireDatabase().from(tableName).insert({ name: name.trim(), description: description.trim() });
       if (error) throw error;
       setName('');
       setDescription('');

@@ -20,18 +20,21 @@ export default function SyncQueueScreen() {
   const db = useSQLiteContext();
   const [sales, setSales] = useState<Awaited<ReturnType<typeof listOfflineSales>>>([]);
   const [customers, setCustomers] = useState<Awaited<ReturnType<typeof listOfflineCustomers>>>([]);
+  const [productChanges, setProductChanges] = useState<{ id: string; action: string; status: string; last_error: string | null }[]>([]);
   const [lastSync, setLastSync] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!session?.user.id) return;
     try {
-      const [saleRows, customerRows, saved] = await Promise.all([
+      const [saleRows, customerRows, productRows, saved] = await Promise.all([
         listOfflineSales(session.user.id),
         listOfflineCustomers(session.user.id),
+        db.getAllAsync<{ id: string; action: string; status: string; last_error: string | null }>("SELECT id,action,status,last_error FROM sync_queue WHERE user_id=? AND entity='product' ORDER BY created_at DESC LIMIT 100", session.user.id),
         db.getFirstAsync<{ value: string }>('SELECT value FROM app_settings WHERE key=?', 'last_sync_at'),
       ]);
       setSales(saleRows);
       setCustomers(customerRows);
+      setProductChanges(productRows);
       setLastSync(saved?.value ?? null);
     } catch (error) {
       Alert.alert('Could not load sync queue', error instanceof Error ? error.message : 'Please retry.');
@@ -46,7 +49,7 @@ export default function SyncQueueScreen() {
 
   async function retry() {
     if (mode !== 'online' || !connected) {
-      Alert.alert('Connect to sync', 'Switch to Online Mode and connect to the internet first.');
+      Alert.alert('Connect to sync', 'Switch to Online Mode and make sure the Sellora server is reachable.');
       return;
     }
     await refresh();
@@ -61,7 +64,7 @@ export default function SyncQueueScreen() {
       <View style={styles.page}>
         <AppHeader profile={profile} />
         <Text style={styles.title}>Offline & sync</Text>
-        <Text style={styles.help}>Mode: {mode} · Network: {connected ? 'connected' : 'not connected'}</Text>
+        <Text style={styles.help}>Mode: {mode} · Sellora server: {connected ? 'reachable' : 'not reachable'}</Text>
         <Text style={styles.help}>Last successful sync: {lastSync ? new Date(lastSync).toLocaleString() : 'Not synced yet'}</Text>
         <AppButton title={syncing ? 'Syncing…' : 'Sync pending records'} onPress={retry} disabled={syncing} />
 
@@ -76,6 +79,16 @@ export default function SyncQueueScreen() {
           );
         })}
         {!customers.length ? <Text style={styles.help}>No local customer records are waiting.</Text> : null}
+
+        <Text style={styles.section}>Product changes</Text>
+        {productChanges.map((row) => (
+          <View key={row.id} style={styles.card}>
+            <Text style={styles.name}>{row.action === 'create' ? 'New product' : 'Product edit'}</Text>
+            <Text style={[styles.status, row.status === 'failed' && styles.failed]}>{row.status.toUpperCase()}</Text>
+            {row.last_error ? <Text style={styles.error}>{row.last_error}</Text> : null}
+          </View>
+        ))}
+        {!productChanges.length ? <Text style={styles.help}>No product changes are queued.</Text> : null}
 
         <Text style={styles.section}>Offline sales</Text>
         {sales.map((row) => {

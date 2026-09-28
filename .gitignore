@@ -7,6 +7,9 @@ web-build/
 .env
 .env.*
 !.env.example
+backend/.env
+backend/.local/
+backend/dist/
 *.jks
 *.keystore
 *.p8

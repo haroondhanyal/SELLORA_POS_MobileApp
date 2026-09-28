@@ -11,5 +11,6 @@ export default function IndexRoute() {
   if (locked) return <Redirect href="/auth/pin-login" />;
   if (!profile || profile.approval_status === 'pending') return <Redirect href="/auth/pending-approval" />;
   if (profile.approval_status !== 'approved') return <Redirect href="/auth/pending-approval" />;
+  if (profile.role === 'admin') return <Redirect href="/admin" />;
   return <Redirect href="/dashboard" />;
 }

@@ -10,8 +10,11 @@ import { ProfileImagePicker } from '@/components/ProfileImagePicker';
 import { Screen } from '@/components/Screen';
 import { useAuth } from '@/providers/AuthProvider';
 import { useCurrency } from '@/providers/CurrencyProvider';
-import { getProduct, getProductImageUrl, listBrands, listCategories, saveProduct, uploadProductImage, type ProductDraft } from '@/services/catalog';
-import { requireSupabase } from '@/services/supabase';
+import { useConnection } from '@/providers/ConnectionProvider';
+import { getProduct, getProductImageUrl, listBrands, listCategories, saveProduct, stageOfflineProductImage, uploadProductImage, type ProductDraft } from '@/services/catalog';
+import { isOfflineWorkMode } from '@/services/connectivity';
+import { requireDatabase } from '@/services/database';
+import { deletePrivateFiles } from '@/services/storage';
 import { colors } from '@/theme/colors';
 
 type ProductFormValues = Omit<ProductDraft, 'cost_price' | 'sale_price' | 'tax_rate' | 'minimum_stock' | 'reorder_level'> & {
@@ -33,6 +36,7 @@ export function ProductForm({ productId }: { productId?: string }) {
   const params = useLocalSearchParams<{ barcode?: string }>();
   const { profile, permissionCodes, session, locked } = useAuth();
   const { baseCurrency } = useCurrency();
+  const { connected, mode } = useConnection();
   const [form, setForm] = useState<ProductFormValues>(emptyProduct);
   const [categories, setCategories] = useState<{ id: string; label: string }[]>([]);
   const [brands, setBrands] = useState<{ id: string; label: string }[]>([]);
@@ -78,19 +82,25 @@ export function ProductForm({ productId }: { productId?: string }) {
   async function submit() {
     const numbers = [form.cost_price, form.sale_price, form.tax_rate, form.minimum_stock, form.reorder_level].map(Number);
     if (form.name.trim().length < 2 || form.sku.trim().length < 2 || form.unit.trim().length < 1
-      || numbers.some((value) => !Number.isFinite(value) || value < 0)) {
-      Alert.alert('Check product details', 'Enter a name, SKU, unit, and valid non-negative price, tax and stock values.');
+      || !form.sale_price.trim() || numbers.some((value) => !Number.isFinite(value) || value < 0)
+      || Number(form.sale_price) <= 0 || Number(form.tax_rate) > 100) {
+      Alert.alert('Check product details', 'Enter a name, SKU, unit, a sale price above zero, and valid cost, tax (0–100%) and stock values.');
       return;
     }
 
     setBusy(true);
     let uploadedPath: string | null = null;
+    let productSaved = false;
     try {
+      const offline = await isOfflineWorkMode();
       let imagePath = removePhoto ? null : form.image_storage_path;
       if (photo) {
-        const uploaded = await uploadProductImage(photo);
-        imagePath = uploaded.path;
-        uploadedPath = uploaded.path;
+        if (offline) imagePath = await stageOfflineProductImage(photo);
+        else {
+          const uploaded = await uploadProductImage(photo);
+          imagePath = uploaded.path;
+          uploadedPath = uploaded.path;
+        }
       }
 
       const draft: ProductDraft = {
@@ -102,16 +112,23 @@ export function ProductForm({ productId }: { productId?: string }) {
         reorder_level: Number(form.reorder_level),
       };
       const id = await saveProduct(draft, productId);
+      productSaved = true;
 
       if (form.image_storage_path && form.image_storage_path !== imagePath) {
-        await requireSupabase().storage.from('products').remove([form.image_storage_path]);
+        await deletePrivateFiles('products', [form.image_storage_path]).catch(() => {});
       }
-      Alert.alert('Product saved', 'Product details are up to date.', [
-        { text: 'Manage variants', onPress: () => router.replace({ pathname: '/products/variants', params: { productId: id } }) },
-        { text: 'Product list', onPress: () => router.replace('/products') },
-      ]);
+      if (offline) {
+        Alert.alert('Saved offline', 'This product change is stored on this device and will sync when the Sellora server is reachable.', [
+          { text: 'Product list', onPress: () => router.replace('/products') },
+        ]);
+      } else {
+        Alert.alert('Product saved', 'Product details are up to date.', [
+          { text: 'Manage variants', onPress: () => router.replace({ pathname: '/products/variants', params: { productId: id } }) },
+          { text: 'Product list', onPress: () => router.replace('/products') },
+        ]);
+      }
     } catch (error) {
-      if (uploadedPath) await requireSupabase().storage.from('products').remove([uploadedPath]).catch(() => {});
+      if (uploadedPath && !productSaved) await deletePrivateFiles('products', [uploadedPath]).catch(() => {});
       Alert.alert('Could not save product', error instanceof Error ? error.message : 'Check your access and connection.');
     } finally {
       setBusy(false);
@@ -128,6 +145,7 @@ export function ProductForm({ productId }: { productId?: string }) {
         <AppHeader profile={profile} />
         <Text style={styles.title}>{productId ? 'Edit product' : 'Add product'}</Text>
         <Text style={styles.help}>Set catalogue, price and stock warning details for this item.</Text>
+        {mode === 'offline' || !connected ? <Text style={styles.offlineNote}>Changes are saved on this device and sync after reconnecting. Product photos stay on this device until upload.</Text> : null}
         <ProfileImagePicker
           label="Product image"
           uri={photo ?? (removePhoto ? null : savedPhoto)}
@@ -164,6 +182,7 @@ const styles = StyleSheet.create({
   page: { gap: 4, paddingBottom: 30 },
   title: { color: colors.navy, fontSize: 28, fontWeight: '800', marginTop: 24 },
   help: { color: colors.muted, lineHeight: 21, marginTop: 5 },
+  offlineNote: { color: colors.warning, lineHeight: 21, marginTop: 10, fontWeight: '600' },
   switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderBottomColor: colors.border, borderBottomWidth: 1 },
   switchLabel: { color: colors.text, fontWeight: '600' },
 });

@@ -6,7 +6,7 @@ import { Screen } from '@/components/Screen';
 import { useAuth } from '@/providers/AuthProvider';
 import { canManageRoles, canManageUsers } from '@/services/permissions';
 import { clearDevicePin } from '@/services/pin';
-import { requireSupabase } from '@/services/supabase';
+import { signOut as endSession } from '@/services/auth';
 import { colors } from '@/theme/colors';
 
 /** First approved screen after sign-in; links users to the features they can access. */
@@ -22,7 +22,7 @@ export default function DashboardScreen() {
   async function signOut() {
     try {
       await clearDevicePin();
-      await requireSupabase().auth.signOut();
+      await endSession();
       router.replace('/welcome');
     } catch (error) {
       Alert.alert('Could not sign out', error instanceof Error ? error.message : 'Please try again.');
@@ -55,7 +55,9 @@ export default function DashboardScreen() {
           <Text style={styles.status}>Approved account</Text>
         </View>
 
-        {showUserManagement ? (
+        {profile.role === 'admin' ? (
+          <AppButton title="Administrator panel" onPress={() => router.push('/admin')} />
+        ) : showUserManagement ? (
           <AppButton title="Manage users & approvals" onPress={() => router.push('/users')} />
         ) : null}
         {showRoleManagement ? (
@@ -72,6 +74,7 @@ export default function DashboardScreen() {
         {canManageInventory ? <AppButton title="Purchases & GRNs" onPress={() => router.push('/purchases')} secondary /> : null}
         {permissionCodes.includes('returns.manage') ? <AppButton title="Returns & refunds" onPress={() => router.push('/returns')} secondary /> : null}
         {canViewExpenses ? <AppButton title="Expenses" onPress={() => router.push('/expenses')} secondary /> : null}
+        {canViewExpenses || permissionCodes.includes('reports.view') ? <AppButton title="Finance overview" onPress={() => router.push('/finance')} secondary /> : null}
         {permissionCodes.includes('customers.credit.manage') ? <AppButton title="Customer credit payments" onPress={() => router.push('/customers/payments')} secondary /> : null}
         {permissionCodes.includes('customers.manage') ? <AppButton title="Loyalty rewards" onPress={() => router.push('/customers/loyalty')} secondary /> : null}
         {permissionCodes.includes('shifts.manage') ? <AppButton title="My shift & cash drawer" onPress={() => router.push('/shifts')} secondary /> : null}

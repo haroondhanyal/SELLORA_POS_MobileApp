@@ -2,8 +2,10 @@ import * as Crypto from 'expo-crypto';
 import * as SQLite from 'expo-sqlite';
 import type { CartLine } from '@/providers/CartProvider';
 import { getDeviceId } from '@/services/device';
-import { requireSupabase } from '@/services/supabase';
+import { apiRequest } from '@/services/api';
+import { getCurrentUser } from '@/services/auth';
 import { decryptLocalJson, encryptLocalJson } from '@/services/localEncryption';
+import type { Customer } from '@/services/customers';
 
 export type OfflineSalePayload = {
   id: string; userId: string; branchId: string; warehouseId: string; customerId: string | null; salesAgentId: string;
@@ -14,12 +16,22 @@ export type OfflineSalePayload = {
 /** Persists an offline receipt and reduces only the local cached stock snapshot. */
 export async function saveOfflineSale(input: Omit<OfflineSalePayload, 'id' | 'userId'> & { userId: string }) {
   if (input.items.length === 0) throw new Error('Add at least one item.');
-  if (input.payments.some((payment) => ['customer_credit', 'store_credit'].includes(payment.method))) {
-    throw new Error('Customer credit and store credit require an online connection.');
-  }
   const db = await SQLite.openDatabaseAsync('sellora.db');
   const payload: OfflineSalePayload = { ...input, id: Crypto.randomUUID() };
   await db.withTransactionAsync(async () => {
+    const creditDue = payload.payments.filter((payment) => payment.method === 'customer_credit').reduce((sum, payment) => sum + payment.amount, 0);
+    const storeCreditDue = payload.payments.filter((payment) => payment.method === 'store_credit').reduce((sum, payment) => sum + payment.amount, 0);
+    if (creditDue > 0 || storeCreditDue > 0) {
+      if (!payload.customerId) throw new Error('Choose a customer before using customer or store credit.');
+      const customerRow = await db.getFirstAsync<{ payload: string }>('SELECT payload FROM cached_customers WHERE branch_id=? AND id=?', payload.branchId, payload.customerId);
+      if (!customerRow) throw new Error('Refresh this customer online before using credit offline.');
+      const customer = await decryptLocalJson<Customer>(customerRow.payload);
+      if (Number(customer.credit_balance) + creditDue > Number(customer.credit_limit)) throw new Error('Cached customer credit limit would be exceeded.');
+      if (storeCreditDue > Number(customer.store_credit_balance)) throw new Error('Cached store credit balance is too low.');
+      customer.credit_balance = Number(customer.credit_balance) + creditDue;
+      customer.store_credit_balance = Number(customer.store_credit_balance) - storeCreditDue;
+      await db.runAsync('UPDATE cached_customers SET payload=?,updated_at=? WHERE branch_id=? AND id=?', await encryptLocalJson(customer), new Date().toISOString(), payload.branchId, payload.customerId);
+    }
     for (const item of payload.items) {
       const key = `${item.productId}:${item.variantId ?? 'base'}`;
       const row = await db.getFirstAsync<{ payload: string }>('SELECT payload FROM cached_sellable_items WHERE warehouse_id=? AND item_key=?', payload.warehouseId, key);
@@ -44,17 +56,16 @@ export async function syncOfflineSales(userId: string) {
     const sale = await decryptLocalJson<OfflineSalePayload>(row.payload);
     await db.runAsync("UPDATE offline_sales SET status='syncing',attempt_count=attempt_count+1,last_error=NULL WHERE id=?", row.id);
     try {
-      const { data: { user } } = await requireSupabase().auth.getUser();
+      const user = await getCurrentUser();
       if (!user || user.id !== sale.userId) throw new Error('Sign in with the account that created this offline sale.');
       const deviceId = await getDeviceId();
-      const { data, error } = await requireSupabase().rpc('sellora_sync_offline_sale', {
-        p_client_sale_id: sale.id, p_branch_id: sale.branchId, p_warehouse_id: sale.warehouseId,
-        p_customer_id: sale.customerId, p_agent_id: sale.salesAgentId, p_device_id: deviceId,
-        p_items: sale.items.map((item) => ({ product_id: item.productId, variant_id: item.variantId, quantity: item.quantity, discount_amount: item.discountAmount })),
-        p_payments: sale.payments,
+      const { saleId } = await apiRequest<{ saleId: string }>('/api/sales/offline-sync', {
+        method: 'POST', body: JSON.stringify({ clientSaleId: sale.id, branchId: sale.branchId, warehouseId: sale.warehouseId,
+          customerId: sale.customerId, salesAgentId: sale.salesAgentId, deviceId,
+          items: sale.items.map((item) => ({ productId: item.productId, variantId: item.variantId, quantity: item.quantity, discountAmount: item.discountAmount })),
+          payments: sale.payments }),
       });
-      if (error) throw error;
-      await db.runAsync("UPDATE offline_sales SET status='synced',server_sale_id=?,synced_at=CURRENT_TIMESTAMP,last_error=NULL WHERE id=?", String(data), row.id);
+      await db.runAsync("UPDATE offline_sales SET status='synced',server_sale_id=?,synced_at=CURRENT_TIMESTAMP,last_error=NULL WHERE id=?", saleId, row.id);
       syncedAny = true;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown sync error';

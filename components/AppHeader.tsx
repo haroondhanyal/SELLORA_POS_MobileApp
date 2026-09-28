@@ -4,18 +4,17 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { router } from 'expo-router';
 import type { UserProfile } from '@/types/auth';
 import { useConnection } from '@/providers/ConnectionProvider';
-import { useCurrency } from '@/providers/CurrencyProvider';
 import { getAvatarUrl } from '@/services/avatars';
-import { AppearanceToggle } from '@/components/AppearanceToggle';
 import { ThemeStyle } from '@/components/ThemeStyle';
+import { SlideDrawer } from '@/components/SlideDrawer';
 import { colors } from '@/theme/colors';
 
 /** Shared signed-in header with profile, connection state and display-currency picker. */
 export function AppHeader({ profile }: { profile: UserProfile | null }) {
   const { mode, connected, setMode } = useConnection();
-  const { currency, setCurrency } = useCurrency();
   const db = useSQLiteContext();
   const [connectionOpen, setConnectionOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [pending, setPending] = useState(0);
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
   const online = connected && mode === 'online';
@@ -23,7 +22,7 @@ export function AppHeader({ profile }: { profile: UserProfile | null }) {
   useEffect(() => {
     if (!profile?.id) { setPending(0); return; }
     let active = true;
-    const loadPending = () => db.getFirstAsync<{ count: number }>("SELECT (SELECT count(*) FROM offline_sales WHERE user_id=? AND status IN ('pending','failed','syncing')) + (SELECT count(*) FROM offline_customers WHERE user_id=? AND status IN ('pending','failed','syncing')) as count", profile.id, profile.id)
+    const loadPending = () => db.getFirstAsync<{ count: number }>("SELECT (SELECT count(*) FROM offline_sales WHERE user_id=? AND status IN ('pending','failed','syncing')) + (SELECT count(*) FROM offline_customers WHERE user_id=? AND status IN ('pending','failed','syncing')) + (SELECT count(*) FROM sync_queue WHERE user_id=? AND status IN ('pending','failed','syncing')) as count", profile.id, profile.id, profile.id)
       .then((row) => { if (active) setPending(row?.count ?? 0); })
       .catch(() => {});
     void loadPending();
@@ -57,14 +56,6 @@ export function AppHeader({ profile }: { profile: UserProfile | null }) {
     void saveMode(next);
   }
 
-  function chooseCurrency() {
-    Alert.alert('Display currency', 'Choose how Sellora shows prices on this device.', [
-      { text: 'PKR', onPress: () => { void setCurrency('PKR').catch(showCurrencyError); } },
-      { text: 'USD', onPress: () => { void setCurrency('USD').catch(showCurrencyError); } },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
-  }
-
   return (
     <ThemeStyle>
       <View style={styles.header}>
@@ -80,23 +71,24 @@ export function AppHeader({ profile }: { profile: UserProfile | null }) {
           </View>
         </Pressable>
         <View style={styles.rightActions}>
-          <AppearanceToggle />
           <Pressable accessibilityRole="button" onPress={() => setConnectionOpen(true)} style={styles.status}>
             <View style={[styles.dot, { backgroundColor: online ? colors.success : colors.warning }]} />
             <Text style={styles.statusText}>{online ? 'Online' : 'Offline'}{pending ? ` · ${pending}` : ''}</Text>
           </Pressable>
-          <Pressable accessibilityRole="button" onPress={chooseCurrency} style={styles.currencyButton}>
-            <Text style={styles.currencyText}>{currency} ▾</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Open navigation menu" onPress={() => setDrawerOpen(true)} style={styles.menuButton}>
+            <Text style={styles.menuIcon}>☰</Text>
           </Pressable>
         </View>
       </View>
+
+      <SlideDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} />
 
       <Modal transparent visible={connectionOpen} animationType="slide" onRequestClose={() => setConnectionOpen(false)}>
         <Pressable style={styles.backdrop} onPress={() => setConnectionOpen(false)}>
           <Pressable style={styles.sheet} onPress={(event) => event.stopPropagation()}>
             <View style={styles.grabber} />
             <Text style={styles.sheetTitle}>Connection mode</Text>
-            <Text style={styles.detail}>Network: {connected ? 'Connected' : 'No internet connection'}</Text>
+            <Text style={styles.detail}>Sellora server: {connected ? 'Reachable' : 'Not reachable'}</Text>
             <Text style={styles.detail}>Work mode: {mode === 'online' ? 'Online' : 'Offline'}</Text>
             <Text style={styles.detail}>Pending sync: {pending}</Text>
             <Text style={styles.detail}>Last sync: Not synced yet</Text>
@@ -111,10 +103,6 @@ export function AppHeader({ profile }: { profile: UserProfile | null }) {
   );
 }
 
-function showCurrencyError() {
-  Alert.alert('Could not save currency preference', 'Please try again.');
-}
-
 const styles = StyleSheet.create({
   header: { minHeight: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   identity: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 1 },
@@ -125,7 +113,8 @@ const styles = StyleSheet.create({
   rightActions: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   status: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 9, paddingVertical: 9, borderRadius: 99, backgroundColor: 'white', borderWidth: 1, borderColor: colors.border },
   dot: { width: 8, height: 8, borderRadius: 4 }, statusText: { color: colors.text, fontWeight: '700', fontSize: 12 },
-  currencyButton: { paddingHorizontal: 7, paddingVertical: 10 }, currencyText: { color: colors.tealDark, fontWeight: '800', fontSize: 12 },
+  menuButton: { width: 40, height: 42, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: 'white', borderWidth: 1, borderColor: colors.border },
+  menuIcon: { color: colors.navy, fontSize: 19, fontWeight: '800' },
   backdrop: { flex: 1, backgroundColor: '#0007', justifyContent: 'flex-end' },
   sheet: { padding: 24, paddingBottom: 34, backgroundColor: 'white', borderTopLeftRadius: 24, borderTopRightRadius: 24 },
   grabber: { width: 42, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: 'center', marginBottom: 18 },

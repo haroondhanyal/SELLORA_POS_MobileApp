@@ -4,16 +4,25 @@ import { router } from 'expo-router';
 import { Screen } from '@/components/Screen';
 import { PasswordField } from '@/components/PasswordField';
 import { AppButton } from '@/components/AppButton';
-import { requireSupabase } from '@/services/supabase';
+import { authClient } from '@/services/authClient';
+import { useLocalSearchParams } from 'expo-router';
+import { signOut } from '@/services/auth';
 import { colors } from '@/theme/colors';
 
-/** Completes a password reset after Supabase returns to the Sellora deep link. */
+/** Completes a Better Auth password reset from a one-time recovery token. */
 export default function ResetPasswordScreen() {
+  const { token } = useLocalSearchParams<{ token?: string }>();
   const [password, setPassword] = useState(''); const [confirmation, setConfirmation] = useState(''); const [busy, setBusy] = useState(false);
   async function submit() {
     if (password.length < 8 || password !== confirmation) { Alert.alert('Check your password', 'Use at least 8 characters and make both entries match.'); return; }
     setBusy(true);
-    try { const client = requireSupabase(); const { error } = await client.auth.updateUser({ password }); if (error) throw error; await client.auth.signOut(); Alert.alert('Password updated', 'Sign in with your new password.', [{ text: 'Continue', onPress: () => router.replace('/auth/login') }]); }
+    try {
+      if (!token || !authClient) throw new Error('Open the latest password recovery link. If you cannot receive email, ask an administrator to reset your account.');
+      const result = await authClient.resetPassword({ newPassword: password, token });
+      if (result.error) throw new Error(result.error.message);
+      await signOut().catch(() => {});
+      Alert.alert('Password updated', 'Sign in with your new password.', [{ text: 'Continue', onPress: () => router.replace('/auth/login') }]);
+    }
     catch (error) { Alert.alert('Could not reset password', error instanceof Error ? error.message : 'Open a fresh recovery email and try again.'); }
     finally { setBusy(false); }
   }

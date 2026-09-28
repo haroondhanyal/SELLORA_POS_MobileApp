@@ -1,172 +1,153 @@
-# Sellora Mobile
+# Sellora
+
+**A mobile point of sale and retail operations workspace for independent teams.**
+
+Sellora brings checkout, stock, purchasing, customer accounts, staff access and business reporting into one Expo app. It supports online work through the Sellora API and queues selected work securely when a device is offline.
 
 <p align="center">
-  <img src="./assets/branding/logo.svg" width="720" alt="SELLORA — Sell Smarter. Manage Anywhere." />
+  <img src="docs/screenshots/sellora-splash.jpeg" alt="Sellora app splash screen" width="34%" />
+  &nbsp;&nbsp;&nbsp;
+  <img src="docs/screenshots/admin-dashboard.jpeg" alt="Sellora administrator dashboard showing requests, team presence and cashier sales" width="34%" />
 </p>
 
-<p align="center"><strong>Sell Smarter. Manage Anywhere.</strong><br/>Mobile retail, point of sale and inventory management for Android and iOS.</p>
+<p align="center"><sub>Sellora on Android · App launch and administrator dashboard</sub></p>
 
-Sellora is a modern mobile-first Point of Sale and retail operations platform built with React Native, Expo, and TypeScript for Android and iOS. Designed for growing retail businesses, Sellora combines sales, inventory, workforce, customer, branch, purchasing, reporting, and offline operations in one secure application.
+## What you can do
 
-The platform provides role-based access for administrators, managers, sales agents, cashiers, inventory teams, accountants, and other authorized users. New users can register, request roles, manage profiles, use password or PIN-based access, and receive approval before gaining access to protected business features. Administrators can control users, branches, permissions, roles, and operational access.
+| Area | Capabilities |
+| --- | --- |
+| **Point of sale** | Product search, barcode workflow, cart, discounts, customer selection, split payments, receipts and returns. |
+| **Catalog and stock** | Products, variants, categories, brands, warehouses, inventory adjustments and branch transfers. |
+| **Retail operations** | Customers and store credit, suppliers, purchase orders, expenses, shifts and commissions. |
+| **People and access** | Account requests, administrator approval, team roles, permission catalog, branch assignments, profile settings and online presence. |
+| **Business overview** | Sales reports, cashier activity, targets, finance summaries, notifications and permission-scoped Sellora Insights. |
+| **Flexible access** | A read-only guest tour, device PIN unlock, optional Remember me on the sign-in screen, and an app drawer for navigation and account actions. |
+| **Offline work** | Cached product and branch data plus encrypted queues for supported sales, customers, expenses and product edits; queued sales are checked by the server when they sync. |
 
-Sellora includes product and inventory management, categories, brands, variants, barcode support, product images, stock adjustments, warehouses, suppliers, purchase orders, goods-received notes, and inter-branch stock transfers. Its POS flow includes product selection, cart management, customer and sales-agent assignment, multiple payments, receipt generation, returns, refunds, credit handling, loyalty points, expenses, shifts, targets, commissions, approvals, notifications, reports, and audit tracking.
+## Screenshots
 
-The application supports PKR and USD display currencies while preserving original transaction values. Supabase powers authentication, PostgreSQL data, secure storage, realtime-ready services, and backend functions, while SQLite supports cached products, offline sales, queued transactions, and synchronization.
+| App launch | Administrator workspace |
+| --- | --- |
+| ![Sellora splash screen](docs/screenshots/sellora-splash.jpeg) | ![Administrator dashboard with account requests, team online status and cashier sales](docs/screenshots/admin-dashboard.jpeg) |
 
-Sellora also includes an AI retail copilot for business insights, backup export, branch-level reporting, sales-agent performance tracking, and secure row-level access controls. With separate screens for every major module, reusable native components, structured services, and a scalable database architecture, Sellora is designed to evolve from a mobile POS into a complete retail management ecosystem for supermarkets, electronics stores, fashion outlets, general retailers, and multi-branch businesses. Its architecture emphasizes transaction integrity, authentication, atomic stock updates, offline resilience, configurable currency handling, and maintainable code. The modular design also prepares the product for future enhancements such as analytics, realtime collaboration, reconciliation, integrations, and enterprise deployment.
+## How it is built
 
-This Expo + React Native + TypeScript application uses separate Expo Router screens for each major feature. Shared UI, app state, Supabase services, theme tokens, and SQLite live in separate folders.
+- **Mobile app:** Expo Router, React Native, TypeScript and SQLite for encrypted offline data and queued work.
+- **API and authentication:** Self-hosted Express API with Better Auth for email/password accounts, sessions and password-reset integration.
+- **Business data:** PostgreSQL with PostgREST and row-level security. The API binds requests to the signed-in user before database access.
+- **Private media:** The API stores and authorizes product, customer, expense and avatar files.
+- **Deployment:** Local development or Linux systemd/Nginx templates under [`deploy/`](deploy/). Docker is not required.
 
-## Current scope
-
-Phases 1–12 include Sellora launch branding; authentication and user access; catalog/inventory; POS/customers; currency; branches/purchasing; returns/credit/loyalty/expenses; shifts/targets/commissions; approvals/notifications/reports/audit; offline POS sync; AI copilot and backup export. The current auth and onboarding flow has separate splash, welcome, sign-in, account creation, password recovery, PIN unlock and approval-pending screens.
-
-Phase 11 stores offline customers and sales, caches branch stock for read-only inventory, and retries online synchronization. Manual conflict resolution and offline inventory edits remain limited.
+Supabase is not required at runtime. The historical schema and policy migrations remain under `supabase/migrations/`; active self-hosted database migrations are under [`backend/migrations/`](backend/migrations/).
 
 ## Run locally
 
-1. Install Node.js 22.13+ and an Android/iOS simulator or Expo Go.
-2. Run `npm install`.
-3. Copy `.env.example` to `.env` and set the Supabase project URL and public anon/publishable key.
-4. Apply every SQL migration in timestamp order using Supabase SQL Editor or Supabase CLI:
+### Requirements
 
-   - `202609270001_foundation_auth_profiles.sql`
-   - `202609270002_profiles_roles_connection.sql`
-   - `202609270003_catalog_inventory.sql`
-   - `202609270004_pos_sales.sql`
-   - `202609270005_currency.sql`
-   - `202609270006_advanced_inventory.sql`
-   - `202609270007_returns_credit_expenses.sql`
-   - `202609270008_workforce_shifts_targets.sql`
-   - `202609270009_approvals_notifications_reports_audit.sql`
-   - `202609270010_offline_sync.sql`
-   - `202609270011_backup_export.sql`
-   - `202609270012_phase_completion.sql`
-   - `202609270013_copilot_rate_limit.sql`
-   - `202609270014_sync_profile_auth_email.sql`
+- Node.js 22.13 or later (`.nvmrc` targets Node 24)
+- PostgreSQL
+- Expo Go for a phone preview, or an Android/iOS development environment for a native build
 
-5. Enable email authentication in Supabase. Add `sellora://auth/pending-approval` and `sellora://auth/reset-password` to the allowed redirect URLs.
-6. Run `npx expo start` for Expo Go. To build the configured native icon, splash screen and system appearance into a development app, use `npm run native:android` or `npm run native:ios` on a machine with the required Android SDK or Xcode.
-7. Run `npm run typecheck` to check TypeScript errors.
+### 1. Install dependencies
 
-## First administrator and store setup
+From the repository root:
 
-Self-signup always creates a pending cashier profile; a requested role is stored separately for review. For a disposable test administrator, set `ALLOW_DEMO_ADMIN=true`, `SUPABASE_URL`, and `SUPABASE_SERVICE_ROLE_KEY` in your local shell, then run `npm run create:demo-admin`. The script creates a confirmed demo user, approves its profile, and prints a generated password plus a suggested device PIN. Sign in and set the PIN in My profile. Use a test Supabase project only; never place the service-role key in the mobile app or commit it.
-
-After the first admin signs in:
-
-1. Create a branch from **Branches**.
-2. Create a warehouse from **Warehouses** and mark it primary.
-3. Open **Manage users & approvals** and assign the admin account and other users their primary and allowed branches.
-4. Choose the PKR or USD business base currency before creating products. The database locks this setting after products or sales exist to protect stored amounts.
-5. Create categories, brands, products and opening stock. After that, staff with permissions can use POS, receive purchases and transfer stock.
-
-## Authentication, account creation and appearance
-
-- Splash and welcome screens lead to separate sign-in and create-account routes. Sign-in links to account creation; account creation links back to sign-in.
-- Account creation collects name, email, phone with a country/flag picker, date of birth, optional profile photo (up to 25 MB), password, device PIN and requested role. The role request remains pending until an administrator approves it.
-- Sign-in supports password or a device PIN. Password and PIN entries have eye controls to show or hide the value. PIN unlock is available only for a saved Supabase session on that device; signing in with a password is required after signing out or resetting the PIN.
-- Text inputs advance with the keyboard Next action and dismiss the keyboard at the end of a form. Forms scroll while the keyboard is open.
-- Appearance settings include Sellora, Ocean, Emerald, Purple, Midnight, Sunset, Monochrome, Grey, Silver and High Contrast palettes, each with system, light and dark modes. High Contrast uses dark input surfaces with white text; the saved palette is loaded before app screens render.
-- The app does not contain a shared hardcoded admin password. Create an approved test admin with the guarded script above, or provision production administrators through Supabase with an authorized project owner account.
-
-## Phases 4–7
-
-- **Phase 4 — Products & inventory:** separate catalogue, category, brand, variant, barcode, stock and adjustment screens. Product photos use private Supabase Storage. Stock adjustments update inventory and create a reason record in one database transaction.
-- **Phase 5 — POS:** separate product selection, cart, payment and receipt screens. Branch customers and approved sales agents are selectable. A single database function prices the sale, validates stock/credit, deducts inventory and writes the receipt, line items, payments and stock movements atomically.
-- **Phase 6 — Currency:** the business has one base currency; each device can display PKR or USD. Current daily exchange rates and admin manual rates are cached in SQLite for offline viewing. Changing display currency never rewrites product amounts or historical receipts.
-- **Phase 7 — Advanced inventory:** admin branch and warehouse setup, user branch access, supplier records, stock-transfer states and purchase orders. Receiving a delivery creates a goods-received note and adds stock atomically.
-
-## Phase 8 — Returns, credit, loyalty and expenses
-
-- Returns are looked up by receipt. The database validates available return quantities, restores inventory and records the refund in one transaction. Full return marks the original sale refunded.
-- Cashiers can receive customer credit payments. Each payment is checked against outstanding balance and updates the balance atomically.
-- Completed customer sales award one loyalty point per 100 base-currency units. Points are stored in a ledger and displayed on the customer record.
-- Branch expenses include receipt images in a private 25 MB limited bucket. Loyalty points can be redeemed in multiples of 100 for base-currency store credit.
-
-## Phase 9 — Workforce, targets and commissions
-
-- Employees open and close their own shifts. Cash reconciliation compares opening cash plus recorded cash payments against the close count.
-- Managers can assign daily, weekly or monthly sales targets to approved agents.
-- A branch percentage commission rule applies to future sales and writes an immutable commission snapshot.
-- Target screens compare completed sales with the assigned daily, weekly or monthly target. Shifts include documented cash-in and cash-out movements in closeout reconciliation.
-
-## Phase 10 — Approvals, notifications, reports and audit
-
-- Staff can submit an approval request. Authorized reviewers can approve/reject it with an optional note; requesters receive an in-app notification.
-- New signup and account approval changes generate notification records.
-- Separate summary and detailed reports calculate revenue, discounts, line margin, expenses, refunds, commissions, product/category, customer, agent and cashier breakdowns. Reports obey sales row-level security.
-- Notifications update live through Supabase Realtime. Sale, refund, expense, cash movement, credit payment, transfer and approval decisions create audit events.
-
-## Phase 11 — Offline POS and queued sale sync
-
-- POS catalogue, warehouse selection, branch customers, sales agents and inventory snapshots are cached in SQLite after online use. In Offline Mode, product/customer search and inventory viewing are available.
-- Offline customer records and receipts are committed locally; new customers synchronize before dependent sales. Stock decrements update the local snapshot. Customer/store credit and receipt-photo uploads are blocked while offline.
-- When connected and in Online Mode, sales upload through an idempotent database function. Failed uploads remain visible with their last error; retrying cannot duplicate a sale.
-- Local customer updates, inventory adjustments, manual conflict resolution and offline shifts are not supported. The server revalidates price and stock on sync; staff should review failed queue items.
-
-## Phase 12 — Copilot, backup and release setup
-
-- Sellora Copilot is a Supabase Edge Function. It checks the caller's JWT, approval and role permission, reads through the caller's RLS-limited session, and allows up to 20 questions per user per hour. It sends no customer names or profile data to the AI provider. Configure `OPENAI_API_KEY` and optionally `SELLORA_AI_MODEL` as Edge Function secrets, then deploy `sellora-ai-copilot`.
-- Approved admins can export a JSON snapshot through a database function and the native share sheet. Exports include sensitive employee/customer records; storage images are not part of the snapshot. Keep routine Supabase backups enabled as well.
-- Production release still requires real Supabase credentials, applying and reviewing all migrations, Edge Function deployment/secrets, and Android/iOS device QA. Automated tests and full offline reconciliation are not included.
-- Appearance preferences are stored locally and applied across screens. Ten palettes are available in system, light and dark modes.
-
-## Structure
-
-```text
-app/                 Expo Router screens, one primary feature screen per file
-app/auth/            Login, signup, recovery, PIN and approval screens
-app/products/        Catalogue, categories, brands, variants and barcode
-app/inventory/       Stock, adjustments and adjustment history
-app/pos/             Product selection, cart, payments and receipt
-app/customers/       Branch customer search and entry
-app/returns/         Receipt lookup, return quantities and refund history
-app/expenses/        Branch expense entry and history
-app/branches/        Branch setup and assignment entry point
-app/warehouses/      Warehouse and manager setup
-app/transfers/       Inter-branch stock transfer workflow
-app/purchases/       Purchase orders and goods-received notes
-app/suppliers/       Branch supplier records
-app/settings/        Appearance, backup, currency and offline sync settings
-app/ai/              Authenticated retail copilot
-app/approvals/       Approval requests and review
-app/notifications/   Personal notifications
-app/reports/         Branch sales report and audit history
-app/reports/details.tsx Financial and operational breakdowns
-app/shifts/          Employee shift and cash drawer
-app/targets/         Sales-agent targets and commission rules
-components/          Reused native UI fields, cards and buttons
-providers/           Shared authentication, connection, currency and cart state
-services/            Supabase, local database and business logic
-supabase/migrations/ Rebuildable PostgreSQL schema and row-level security
-theme/               Shared palette, typography, spacing and radius
-assets/branding/     Sellora SVG source plus native app icon and splash PNGs
-types/               Shared TypeScript types
+```sh
+nvm use                 # optional when nvm is installed
+npm install
+cd backend && npm install && cd ..
 ```
 
-## Screen ownership for parallel development
+### 2. Configure PostgreSQL and the API
 
-Each group can be assigned to a different developer. Agree before editing a shared component or migration.
+Create a PostgreSQL database and a restricted application role. Copy `backend/.env.example` to `backend/.env`, then configure the database URL, a random `BETTER_AUTH_SECRET` of at least 32 characters, and the API URL. For a phone on the same Wi-Fi, use the development computer's LAN address, for example `http://192.168.1.20:4100`.
 
-- **Auth:** `app/auth/`, `app/splash.tsx`, `app/welcome.tsx`
-- **Account:** `app/profile/` and shared profile inputs in `components/`
-- **Admin users and roles:** `app/users/`, `app/roles/`, `components/RolePicker.tsx`
-- **Products and inventory:** `app/products/`, `app/inventory/`, `services/catalog.ts`, `services/inventory.ts`
-- **POS and customers:** `app/pos/`, `app/customers/`, `services/pos.ts`, `services/customers.ts`
-- **Currency and operations:** `app/settings/`, `app/branches/`, `app/warehouses/`, `app/transfers/`, `app/purchases/`, `app/suppliers/`
-- **Platform:** `providers/`, `services/`, `supabase/migrations/`
+From `backend/`, initialize the auth schema, build and apply the Sellora migrations, then prepare the local PostgREST roles/configuration:
 
-Keep feature-specific screen logic inside its route. Put reused UI in `components/`, database work in `services/`, and cross-screen state in `providers/`. Brief comments above screens and key helpers explain their responsibility.
+```sh
+npm run auth:migrate
+npm run build
+npm run db:migrate
+node scripts/prepare-postgrest.mjs
+```
 
-## Security and remaining work
+Keep `backend/.env` private. Never put `DATABASE_URL`, `BETTER_AUTH_SECRET`, or the PostgREST signing secret in the Expo app configuration.
 
-- Supabase Auth owns passwords; sessions and PIN verifiers use Expo SecureStore.
-- Profile, branch, inventory and sales access use PostgreSQL row-level security. Screen permission checks control visibility but are not the security boundary.
-- A configured device PIN is required again after Sellora leaves the foreground. It unlocks the saved session on that device; it is not an account password or a second server-side factor.
-- SQLite payloads for customer, sales-agent, product, warehouse, and offline sale caches use AES-256-GCM. The random encryption key stays in Expo SecureStore, and older plaintext cache rows are encrypted on app startup. If the key is lost, unsynced local records cannot be recovered; sync them before device migration or reinstall.
-- Copilot verifies the Supabase JWT, account approval, and role permission on the server. Its Edge Function still needs deployment and the `OPENAI_API_KEY` must only be configured as a Supabase secret; never add a service-role or OpenAI key to the mobile `.env`.
-- Backup export is restricted to approved administrators and contains customer and employee data. Share exports only through a trusted channel and keep routine Supabase project backups enabled.
-- Branded app icon and native launch image are configured from `assets/branding/`. Apply and review migrations, deploy Edge Functions and secrets, then build and run device QA against the target Supabase project before release.
-- Apply migrations to a new project, or review their assumptions and existing policies before applying to a project with existing tables or types. This repository does not include a live-project security audit or automated database policy tests.
+### 3. Configure and start the app
+
+In the repository root, copy `.env.example` to `.env` if you want to set the API address explicitly:
+
+```dotenv
+EXPO_PUBLIC_API_URL=http://192.168.1.20:4100
+```
+
+For a phone preview, set this to the computer's LAN IP, not `localhost`. Open three terminals:
+
+```sh
+# backend/ — API
+npm start
+```
+
+```sh
+# backend/ — PostgREST
+npm run rest:dev
+```
+
+```sh
+# repository root — Expo
+npx expo start --lan
+```
+
+Scan the Metro QR code with Expo Go on the same Wi-Fi. Keep the computer, API, PostgreSQL and PostgREST running during local use. The API health endpoint is `http://<computer-ip>:4100/health`.
+
+## First administrator and team access
+
+Create the first account from **Administrator portal → Request administrator access**. From `backend/`, the database owner then bootstraps that account once:
+
+```sh
+npm run admin:bootstrap -- owner@example.com
+```
+
+Replace the example address with the account's email. The bootstrap refuses to promote another account after an approved administrator exists. The first administrator signs in from **Administrator portal → Administrator sign in**; normal team signup cannot grant administrator access. Administrators review requests, assign roles and branches, and manage team status from the in-app administrator panel.
+
+After setup, create a branch, warehouse, catalog and opening stock. Account registration does not depend on email delivery; password recovery requires a configured local sendmail-compatible mail service. See [`backend/README.md`](backend/README.md) for mail and database setup.
+
+## Online and offline behavior
+
+The phone must be able to reach the Sellora API for online features. Previously signed-in users can unlock with their device PIN while disconnected. The app keeps supported cached catalog, branch and warehouse data available locally. Cash/card and customer/store-credit sales, customer creation, expenses (including staged receipt images), and product or variant edits can be queued on device. The local queue is encrypted, and the server rechecks permissions, stock, prices and customer credit when work syncs. Some administrator, purchasing and stock-receiving actions require a live API connection. See the API guide for the current migration and offline boundaries.
+
+Guest access is a read-only tour. Sample checkout and approval actions remain in the preview and do not create production accounts or business records.
+
+## Checks
+
+Run these from the repository root:
+
+```sh
+npm run typecheck
+npm run api:build
+git diff --check
+```
+
+`GET /health` checks API/database connectivity. The optional health-only load script is documented in [`backend/README.md`](backend/README.md); it does not measure authenticated signup or checkout capacity.
+
+## Deployment and data migration
+
+Linux service and Nginx templates are in [`deploy/`](deploy/). A public installation still needs a provisioned server, DNS, HTTPS and protected production environment variables. Do not expose PostgreSQL or PostgREST directly to the internet. Back up the PostgreSQL database and private file storage together.
+
+The local database setup creates the Sellora schema; it does not automatically import accounts or business data from an older hosted database. Review and verify any export/import before retiring the previous service. Sessions must be re-established after an account migration. Deployment, mail delivery and real-device offline sync need verification in the target environment.
+
+## Project map
+
+```text
+app/                    Expo screens and navigation
+components/             Shared interface components
+providers/              Auth, connectivity, currency and offline sync
+services/               API, local data, POS and business operations
+backend/src/            Express API and Better Auth configuration
+backend/migrations/     PostgreSQL schema and policy migrations
+backend/scripts/        Database, PostgREST and load-check helpers
+deploy/                 systemd and Nginx templates
+docs/screenshots/       README product screenshots
+```
+
+For backend setup, endpoints, local capacity checks and Linux deployment steps, see [`backend/README.md`](backend/README.md).

@@ -1,6 +1,6 @@
 import type { CartLine } from '@/providers/CartProvider';
 import { getDeviceId } from '@/services/device';
-import { requireSupabase } from '@/services/supabase';
+import { requireDatabase } from '@/services/database';
 
 export type PaymentLine = { method: string; amount: number; reference?: string };
 
@@ -15,7 +15,7 @@ export async function completeSale(input: {
 }) {
   if (input.items.length === 0) throw new Error('Add at least one product.');
   const deviceId = await getDeviceId();
-  const { data, error } = await requireSupabase().rpc('sellora_complete_sale', {
+  const { data, error } = await requireDatabase().rpc('sellora_complete_sale', {
     p_branch_id: input.branchId,
     p_warehouse_id: input.warehouseId,
     p_customer_id: input.customerId,

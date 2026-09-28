@@ -13,7 +13,7 @@ import { listInventory, type InventoryRow } from '@/services/inventory';
 import { listCachedInventory } from '@/services/inventory';
 import { colors } from '@/theme/colors';
 import { useConnection } from '@/providers/ConnectionProvider';
-import { requireSupabase } from '@/services/supabase';
+import { requireDatabase } from '@/services/database';
 
 /** Phase 4 inventory list for products held in the user's assigned branches. */
 export default function InventoryScreen() {
@@ -44,10 +44,8 @@ export default function InventoryScreen() {
   useEffect(() => { void load(); }, [mode, profile?.primary_branch_id]);
   useEffect(() => {
     if (mode !== 'online' || !profile?.primary_branch_id) return;
-    const channel = requireSupabase().channel(`sellora-inventory-${profile.primary_branch_id}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory' }, () => void load())
-      .subscribe();
-    return () => { void requireSupabase().removeChannel(channel); };
+    const timer = setInterval(() => void load(), 20_000);
+    return () => clearInterval(timer);
   }, [mode, profile?.primary_branch_id]);
   const visibleRows = useMemo(() => {
     const query = search.trim().toLowerCase();

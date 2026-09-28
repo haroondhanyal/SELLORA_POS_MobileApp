@@ -6,13 +6,17 @@ import { AppHeader } from '@/components/AppHeader';
 import { CountryCodePicker, phoneCountryCodes } from '@/components/CountryCodePicker';
 import { DatePickerField } from '@/components/DatePickerField';
 import { FormField } from '@/components/FormField';
+import { PasswordField } from '@/components/PasswordField';
 import { PinField } from '@/components/PinField';
 import { ProfileImagePicker } from '@/components/ProfileImagePicker';
 import { Screen } from '@/components/Screen';
 import { useAuth } from '@/providers/AuthProvider';
 import { getAvatarUrl, uploadProfileAvatar } from '@/services/avatars';
 import { clearDevicePin, hasDevicePin, setDevicePin } from '@/services/pin';
-import { requireSupabase } from '@/services/supabase';
+import { requireDatabase } from '@/services/database';
+import { signOut as endSession } from '@/services/auth';
+import { deletePrivateFiles } from '@/services/storage';
+import { authClient } from '@/services/authClient';
 import { colors } from '@/theme/colors';
 
 /** Edits personal details and manages the account's photo and device PIN. */
@@ -28,6 +32,9 @@ export default function ProfileScreen() {
   const [savedAvatarUrl, setSavedAvatarUrl] = useState<string | null>(null);
   const [pin, setPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [pinConfigured, setPinConfigured] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -68,8 +75,9 @@ export default function ProfileScreen() {
   // Save photo and text fields together so the profile shows one consistent result.
   async function saveProfile() {
     if (!profile) return;
-    if (name.trim().length < 2 || !email.includes('@') || phoneDigits.trim().length < 7) {
-      Alert.alert('Check your details', 'Enter your name, valid email and phone number.');
+    const normalizedPhone = phoneDigits.replace(/\D/g, '');
+    if (name.trim().length < 2 || !email.includes('@') || (normalizedPhone.length > 0 && (normalizedPhone.length < 7 || normalizedPhone.length > 15))) {
+      Alert.alert('Check your details', 'Enter your name and a valid email. If you add a phone number, use 7 to 15 digits.');
       return;
     }
 
@@ -79,11 +87,11 @@ export default function ProfileScreen() {
       if (removedPhoto) photoPath = null;
       else if (photo) photoPath = await uploadProfileAvatar(photo);
 
-      const { error } = await requireSupabase()
+      const { error } = await requireDatabase()
         .from('profiles')
         .update({
           full_name: name.trim(),
-          phone: `${countryCode} ${phoneDigits.trim()}`,
+          phone: normalizedPhone ? `${countryCode} ${normalizedPhone}` : null,
           date_of_birth: birthday ? formatDate(birthday) : null,
           avatar_storage_path: photoPath,
         })
@@ -92,23 +100,18 @@ export default function ProfileScreen() {
       if (error) throw error;
 
       if (profile.avatar_storage_path && profile.avatar_storage_path !== photoPath) {
-        await requireSupabase().storage.from('avatars').remove([profile.avatar_storage_path]);
+        await deletePrivateFiles('avatars', [profile.avatar_storage_path]);
       }
 
-      const nextEmail = email.trim().toLowerCase();
-      const emailChanged = nextEmail !== profile.email.toLowerCase();
-      if (emailChanged) {
-        const { error: emailError } = await requireSupabase().auth.updateUser({ email: nextEmail });
-        if (emailError) throw emailError;
+      if (email.trim().toLowerCase() !== profile.email.toLowerCase()) {
+        throw new Error('Email changes need a verified recovery email service. Ask an administrator to update your account email.');
       }
 
       await reloadProfile();
       setPhoto(null);
       setRemovedPhoto(false);
       setSavedAvatarUrl(photoPath ? await getAvatarUrl(photoPath) : null);
-      Alert.alert('Profile updated', emailChanged
-        ? 'Your profile details have been saved. Check your new email address to confirm the email change.'
-        : 'Your profile details have been saved.');
+      Alert.alert('Profile updated', 'Your profile details have been saved.');
     } catch (error) {
       Alert.alert(
         'Could not save profile',
@@ -117,6 +120,23 @@ export default function ProfileScreen() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function changePassword() {
+    if (currentPassword.length < 8 || newPassword.length < 8 || newPassword !== confirmNewPassword) {
+      Alert.alert('Check your passwords', 'Enter your current password, then a matching new password of at least 8 characters.');
+      return;
+    }
+    if (!authClient) return;
+    setBusy(true);
+    try {
+      const result = await authClient.changePassword({ currentPassword, newPassword, revokeOtherSessions: true });
+      if (result.error) throw new Error(result.error.message);
+      setCurrentPassword(''); setNewPassword(''); setConfirmNewPassword('');
+      Alert.alert('Password changed', 'Use the new password the next time you sign in.');
+    } catch (error) {
+      Alert.alert('Could not change password', error instanceof Error ? error.message : 'Check your current password and try again.');
+    } finally { setBusy(false); }
   }
 
   // PIN data is salted and saved in SecureStore by the PIN service.
@@ -153,7 +173,7 @@ export default function ProfileScreen() {
   async function signOut() {
     try {
       await clearDevicePin();
-      await requireSupabase().auth.signOut();
+      await endSession();
       router.replace('/welcome');
     } catch (error) {
       Alert.alert('Could not sign out', error instanceof Error ? error.message : 'Please try again.');
@@ -181,13 +201,21 @@ export default function ProfileScreen() {
           }}
         />
         <FormField label="Full name" value={name} onChangeText={setName} autoComplete="name" />
-        <FormField label="Email" value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" autoComplete="email" />
+        <FormField label="Email (contact an administrator to change)" value={email} onChangeText={setEmail} editable={false} autoCapitalize="none" keyboardType="email-address" autoComplete="email" />
         <View style={styles.phoneRow}>
           <CountryCodePicker value={countryCode} onChange={setCountryCode} compact />
           <View style={styles.phoneInput}><FormField label="Phone number" value={phoneDigits} onChangeText={setPhoneDigits} keyboardType="phone-pad" /></View>
         </View>
         <DatePickerField label="Date of birth" value={birthday} onChange={setBirthday} />
         <AppButton title="Save profile" onPress={saveProfile} busy={busy} />
+
+        <View style={styles.pinCard}>
+          <Text style={styles.pinTitle}>Password</Text>
+          <PasswordField label="Current password" value={currentPassword} onChangeText={setCurrentPassword} autoComplete="current-password" showStrength={false} />
+          <PasswordField label="New password" value={newPassword} onChangeText={setNewPassword} autoComplete="new-password" />
+          <PasswordField label="Confirm new password" value={confirmNewPassword} onChangeText={setConfirmNewPassword} autoComplete="new-password" showStrength={false} />
+          <AppButton title="Change password" onPress={changePassword} busy={busy} />
+        </View>
 
         <View style={styles.pinCard}>
           <Text style={styles.pinTitle}>Device PIN</Text>

@@ -16,8 +16,11 @@ export async function initializeLocalDatabase(db: SQLiteDatabase) {
       id TEXT PRIMARY KEY NOT NULL,
       entity TEXT NOT NULL,
       action TEXT NOT NULL,
+      user_id TEXT,
       payload TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'pending',
+      attempt_count INTEGER NOT NULL DEFAULT 0,
+      last_error TEXT,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
     CREATE TABLE IF NOT EXISTS exchange_rate_cache (
@@ -67,6 +70,12 @@ export async function initializeLocalDatabase(db: SQLiteDatabase) {
     );
   `);
 
+  const syncColumns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(sync_queue)');
+  const existingColumns = new Set(syncColumns.map((column) => column.name));
+  if (!existingColumns.has('user_id')) await db.execAsync('ALTER TABLE sync_queue ADD COLUMN user_id TEXT');
+  if (!existingColumns.has('attempt_count')) await db.execAsync('ALTER TABLE sync_queue ADD COLUMN attempt_count INTEGER NOT NULL DEFAULT 0');
+  if (!existingColumns.has('last_error')) await db.execAsync('ALTER TABLE sync_queue ADD COLUMN last_error TEXT');
+
   // Encrypt sensitive cached records left by earlier app versions on first launch.
   await encryptLegacyPayloads(db);
   // Truncate the WAL so legacy plaintext cache pages are not left in the journal.
@@ -113,6 +122,6 @@ async function encryptLegacyPayloads(db: SQLiteDatabase) {
 /** Reads a count for the pressable connection status sheet. */
 export async function getPendingSyncCount() {
   const db = await SQLite.openDatabaseAsync('sellora.db');
-  const result = await db.getFirstAsync<{ count: number }>("SELECT (SELECT count(*) FROM sync_queue WHERE status = 'pending') + (SELECT count(*) FROM offline_sales WHERE status IN ('pending','failed','syncing')) + (SELECT count(*) FROM offline_customers WHERE status IN ('pending','failed','syncing')) as count");
+  const result = await db.getFirstAsync<{ count: number }>("SELECT (SELECT count(*) FROM sync_queue WHERE status IN ('pending','failed','syncing')) + (SELECT count(*) FROM offline_sales WHERE status IN ('pending','failed','syncing')) + (SELECT count(*) FROM offline_customers WHERE status IN ('pending','failed','syncing')) as count");
   return result?.count ?? 0;
 }

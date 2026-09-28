@@ -1,96 +1,117 @@
 import { createContext, useContext, useEffect, useRef, useState, type PropsWithChildren } from 'react';
 import { AppState } from 'react-native';
-import type { Session } from '@supabase/supabase-js';
+import { authClient } from '@/services/authClient';
+import { apiRequest } from '@/services/api';
 import type { UserProfile } from '@/types/auth';
-import { getMyProfile } from '@/services/auth';
-import { supabase } from '@/services/supabase';
 import { hasDevicePin } from '@/services/pin';
-import * as Linking from 'expo-linking';
-import { router } from 'expo-router';
-import type { EmailOtpType } from '@supabase/supabase-js';
+import { useConnection } from '@/providers/ConnectionProvider';
+import { getOfflineAccount, saveOfflineAccount, type OfflineAccount } from '@/services/offlineIdentity';
 
-type AuthState = { ready: boolean; session: Session | null; profile: UserProfile | null; permissionCodes: string[]; locked: boolean; unlock: () => void; reloadProfile: () => Promise<UserProfile | null> };
-const AuthContext = createContext<AuthState>({ ready: false, session: null, profile: null, permissionCodes: [], locked: false, unlock: () => {}, reloadProfile: async () => null });
+type AppSession = { user: { id: string; email: string | null } };
+type AuthState = { ready: boolean; session: AppSession | null; onlineAuthenticated: boolean; profile: UserProfile | null; permissionCodes: string[]; locked: boolean; unlock: () => void; reloadProfile: () => Promise<UserProfile | null> };
+const AuthContext = createContext<AuthState>({ ready: false, session: null, onlineAuthenticated: false, profile: null, permissionCodes: [], locked: false, unlock: () => {}, reloadProfile: async () => null });
 
-/** Keeps the signed-in session and current user's approval profile available to every screen. */
+/** Shares the Better Auth session and API-loaded approval profile across screens. */
 export function AuthProvider({ children }: PropsWithChildren) {
+  const auth = authClient?.useSession();
+  const { connected, mode, ready: connectionReady } = useConnection();
   const [ready, setReady] = useState(false);
-  const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [permissionCodes, setPermissionCodes] = useState<string[]>([]);
   const [locked, setLocked] = useState(false);
-  const sessionRef = useRef<Session | null>(null);
+  const [localAccount, setLocalAccount] = useState<OfflineAccount | null>(null);
+  const [localAccountReady, setLocalAccountReady] = useState(false);
+  const [localPinReady, setLocalPinReady] = useState(false);
+  const sessionRef = useRef<AppSession | null>(null);
   const hasPinRef = useRef(false);
+  const sessionData = auth?.data as { user?: { id: string; email?: string | null } } | null | undefined;
+  const offlineAvailable = connectionReady && (!connected || mode === 'offline');
+  const liveSession: AppSession | null = sessionData?.user ? { user: { id: sessionData.user.id, email: sessionData.user.email ?? null } } : null;
+  const session: AppSession | null = liveSession ?? (offlineAvailable && localPinReady && localAccount
+    ? { user: localAccount.user }
+    : null);
+
+  useEffect(() => {
+    let active = true;
+    async function loadLocalAccount() {
+      const account = await getOfflineAccount();
+      const hasPin = account ? await hasDevicePin(account.user.id).catch(() => false) : false;
+      if (active) {
+        setLocalAccount(account);
+        setLocalPinReady(hasPin);
+        setLocalAccountReady(true);
+      }
+    }
+    void loadLocalAccount().catch(() => { if (active) setLocalAccountReady(true); });
+    return () => { active = false; };
+  }, []);
 
   async function reloadProfile() {
-    if (!supabase) { setProfile(null); setPermissionCodes([]); return null; }
+    if (!sessionRef.current) { setProfile(null); setPermissionCodes([]); return null; }
+    const actor = sessionRef.current;
+    if (!connected || mode === 'offline') {
+      const cached = await getOfflineAccount(actor.user.id);
+      if (cached) {
+        setLocalAccount(cached);
+        setProfile(cached.profile);
+        setPermissionCodes(cached.permissionCodes);
+        return cached.profile;
+      }
+      setProfile(null); setPermissionCodes([]); return null;
+    }
     try {
-      const nextProfile = await getMyProfile() as UserProfile | null;
-      setProfile(nextProfile);
-      if (nextProfile?.approval_status === 'approved') {
-        const { data } = await supabase.from('role_permissions').select('permission_code').eq('role', nextProfile.role);
-        setPermissionCodes((data ?? []).map((row) => row.permission_code));
-      } else setPermissionCodes([]);
-      return nextProfile;
-    } catch { setProfile(null); setPermissionCodes([]); return null; }
+      const account = await apiRequest<{ profile: UserProfile; permissionCodes: string[] }>('/api/me');
+      setProfile(account.profile);
+      setPermissionCodes(account.permissionCodes);
+      const cached: OfflineAccount = {
+        user: { id: actor.user.id, email: actor.user.email },
+        profile: account.profile,
+        permissionCodes: account.permissionCodes,
+      };
+      await saveOfflineAccount(cached).catch(() => {});
+      setLocalAccount(cached);
+      return account.profile;
+    } catch {
+      const cached = await getOfflineAccount(actor.user.id);
+      if (cached) {
+        setLocalAccount(cached); setProfile(cached.profile); setPermissionCodes(cached.permissionCodes);
+        return cached.profile;
+      }
+      setProfile(null); setPermissionCodes([]); return null;
+    }
   }
 
   useEffect(() => {
-    if (!supabase) { setReady(true); return; }
     let active = true;
-    async function handleAuthLink(url: string) {
-      try {
-        const fragment = url.split('#')[1] ?? url.split('?')[1] ?? '';
-        const params = new URLSearchParams(fragment);
-        const accessToken = params.get('access_token'); const refreshToken = params.get('refresh_token');
-        const tokenHash = params.get('token_hash'); const tokenType = params.get('type');
-        const code = params.get('code');
-        if (accessToken && refreshToken) {
-          const { error } = await supabase!.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
-          if (error) throw error;
-        } else if (code) {
-          const { error } = await supabase!.auth.exchangeCodeForSession(code);
-          if (error) throw error;
-        } else if (tokenHash && tokenType) {
-          const { error } = await supabase!.auth.verifyOtp({ token_hash: tokenHash, type: tokenType as EmailOtpType });
-          if (error) throw error;
-        }
-        const path = Linking.parse(url).path;
-        if (path?.includes('reset-password')) router.replace('/auth/reset-password');
-        else if (path?.includes('pending-approval')) router.replace('/auth/pending-approval');
-      } catch { router.replace('/auth/login'); }
-    }
-    Linking.getInitialURL().then((url) => { if (url) void handleAuthLink(url); }).catch(() => {});
-    const linkListener = Linking.addEventListener('url', ({ url }) => { void handleAuthLink(url); });
-    // Hide protected routes when a PIN-enabled session leaves the foreground.
-    const appStateListener = AppState.addEventListener('change', (nextState) => {
-      if (nextState !== 'active' && sessionRef.current && hasPinRef.current) setLocked(true);
-    });
-    supabase.auth.getSession().then(async ({ data }) => {
-      if (!active) return;
-      sessionRef.current = data.session;
-      setSession(data.session);
-      if (data.session) {
+    sessionRef.current = session;
+    async function sync() {
+      if (session) {
         await reloadProfile();
-        hasPinRef.current = await hasDevicePin(data.session.user.id);
-        if (active) setLocked(hasPinRef.current);
+        const hasPin = await hasDevicePin(session.user.id).catch(() => false);
+        hasPinRef.current = hasPin;
+        if (active) setLocked(hasPin || (!liveSession && offlineAvailable));
+      } else {
+        setProfile(null); setPermissionCodes([]); setLocked(false); hasPinRef.current = false;
       }
-      if (active) setReady(true);
-    });
-    const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
-      sessionRef.current = nextSession;
-      setSession(nextSession);
-      if (!nextSession) { hasPinRef.current = false; setProfile(null); setPermissionCodes([]); setLocked(false); }
-      else {
-        if (event === 'SIGNED_IN') setLocked(false);
-        void hasDevicePin(nextSession.user.id).then((hasPin) => { hasPinRef.current = hasPin; }).catch(() => {});
-        setTimeout(() => { void reloadProfile(); }, 0);
-      }
-    });
-    return () => { active = false; listener.subscription.unsubscribe(); linkListener.remove(); appStateListener.remove(); };
-  }, []);
+      if (active) setReady(connectionReady && localAccountReady && !auth?.isPending);
+    }
+    void sync();
+    return () => { active = false; };
+  }, [session?.user.id, auth?.isPending, connected, mode, connectionReady, localAccountReady]);
 
-  return <AuthContext.Provider value={{ ready, session, profile, permissionCodes, locked, unlock: () => setLocked(false), reloadProfile }}>{children}</AuthContext.Provider>;
+  useEffect(() => {
+    const listener = AppState.addEventListener('change', (nextState) => {
+      if (nextState !== 'active' && sessionRef.current && hasPinRef.current) setLocked(true);
+      if (nextState === 'active') void auth?.refetch();
+    });
+    return () => listener.remove();
+  }, [auth?.refetch]);
+
+  useEffect(() => {
+    if (connected && mode === 'online') void auth?.refetch();
+  }, [connected, mode]);
+
+  return <AuthContext.Provider value={{ ready, session, onlineAuthenticated: Boolean(liveSession), profile, permissionCodes, locked, unlock: () => setLocked(false), reloadProfile }}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() { return useContext(AuthContext); }

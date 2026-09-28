@@ -6,7 +6,7 @@ import { RolePicker } from '@/components/RolePicker';
 import { Screen } from '@/components/Screen';
 import { useAuth } from '@/providers/AuthProvider';
 import { canManageRoles } from '@/services/permissions';
-import { requireSupabase } from '@/services/supabase';
+import { requireDatabase } from '@/services/database';
 import { colors } from '@/theme/colors';
 import type { UserRole } from '@/types/auth';
 
@@ -26,7 +26,7 @@ export default function RolesScreen() {
     if (!canEditRoles) return;
 
     try {
-      const client = requireSupabase();
+      const client = requireDatabase();
       const [catalogResult, grantsResult] = await Promise.all([
         client.from('permissions').select('code, label, description').order('code'),
         client.from('role_permissions').select('permission_code').eq('role', role),
@@ -53,7 +53,7 @@ export default function RolesScreen() {
   async function changePermission(permission: Permission, enabled: boolean) {
     setBusyCode(permission.code);
     try {
-      const client = requireSupabase();
+      const client = requireDatabase();
 
       if (enabled) {
         const { error } = await client

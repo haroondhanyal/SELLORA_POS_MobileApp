@@ -1,4 +1,6 @@
-import { requireSupabase } from '@/services/supabase';
+import { requireDatabase } from '@/services/database';
+import { getCurrentUser } from '@/services/auth';
+import { deletePrivateFiles, getPrivateFileUrl, uploadPrivateFile } from '@/services/storage';
 import * as Crypto from 'expo-crypto';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as SQLite from 'expo-sqlite';
@@ -22,7 +24,7 @@ export type Customer = {
 
 /** Lists branch customers allowed by the database row-level policy. */
 export async function listCustomers(branchId: string) {
-  const { data, error } = await requireSupabase().from('customers')
+  const { data, error } = await requireDatabase().from('customers')
     .select('id, branch_id, full_name, phone, email, address, date_of_birth, avatar_storage_path, credit_limit, credit_balance, store_credit_balance, loyalty_points, assigned_sales_agent_id')
     .eq('branch_id', branchId).order('full_name').limit(500);
   if (error) throw error;
@@ -74,8 +76,8 @@ export async function createCustomer(input: {
   assigned_sales_agent_id: string | null;
   photoUri: string | null;
 }) {
-  const client = requireSupabase();
-  const { data: { user } } = await client.auth.getUser();
+  const client = requireDatabase();
+  const user = await getCurrentUser();
   if (!user) throw new Error('Sign in before adding a customer.');
   const customerId = Crypto.randomUUID();
   let photoPath: string | null = null;
@@ -97,7 +99,7 @@ export async function createCustomer(input: {
     if (error) throw error;
     return customerId;
   } catch (error) {
-    if (photoPath) await client.storage.from('customers').remove([photoPath]);
+    if (photoPath) await deletePrivateFiles('customers', [photoPath]);
     throw error;
   }
 }
@@ -110,24 +112,20 @@ async function uploadCustomerPhoto(branchId: string, customerId: string, uri: st
   const extension = uri.split('.').pop()?.split('?')[0]?.toLowerCase();
   const mimeType = extension === 'png' ? 'image/png' : extension === 'webp' ? 'image/webp' : 'image/jpeg';
   const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
-  const body = await (await fetch(`data:${mimeType};base64,${base64}`)).arrayBuffer();
   const path = `${branchId}/${customerId}/${Crypto.randomUUID()}.${extension === 'png' || extension === 'webp' ? extension : 'jpg'}`;
-  const { error } = await requireSupabase().storage.from('customers').upload(path, body, { contentType: mimeType, upsert: false });
-  if (error) throw error;
+  await uploadPrivateFile('customers', path, base64, mimeType);
   return path;
 }
 
 /** Creates a short-lived URL for a private branch customer photo. */
 export async function getCustomerPhotoUrl(path: string | null) {
   if (!path) return null;
-  const { data, error } = await requireSupabase().storage.from('customers').createSignedUrl(path, 60 * 60);
-  if (error) throw error;
-  return data.signedUrl;
+  return getPrivateFileUrl('customers', path);
 }
 
 /** Fetches sales agents that are approved and assigned to the active branch. */
 export async function listBranchSalesAgents(branchId: string) {
-  const { data, error } = await requireSupabase().rpc('sellora_list_branch_sales_agents', { target_branch: branchId });
+  const { data, error } = await requireDatabase().rpc('sellora_list_branch_sales_agents', { target_branch: branchId });
   if (error) throw error;
   const agents = (data ?? []) as { id: string; full_name: string }[];
   const db = await SQLite.openDatabaseAsync('sellora.db');
@@ -151,9 +149,9 @@ export async function syncOfflineCustomers(userId:string) {
     try{
       await db.runAsync("UPDATE offline_customers SET status='syncing',last_error=NULL WHERE id=?",row.id);
       const customer=await decryptLocalJson<Customer & {created_by:string}>(row.payload);
-      const {data:{user}}=await requireSupabase().auth.getUser();
+      const user = await getCurrentUser();
       if(!user||user.id!==userId) throw new Error('Sign in with the account that created this customer.');
-      const {error}=await requireSupabase().from('customers').upsert({
+      const {error}=await requireDatabase().from('customers').upsert({
         id:customer.id,branch_id:customer.branch_id,full_name:customer.full_name,phone:customer.phone,email:customer.email,
         address:customer.address,date_of_birth:customer.date_of_birth,credit_limit:customer.credit_limit,
         assigned_sales_agent_id:customer.assigned_sales_agent_id,created_by:customer.created_by,
@@ -175,7 +173,7 @@ export async function listOfflineCustomers(userId:string) {
 
 /** Posts a payment against one customer's outstanding balance. */
 export async function receiveCustomerCreditPayment(input: { customerId: string; amount: number; method: string; reference: string }) {
-  const { data, error } = await requireSupabase().rpc('sellora_receive_customer_payment', {
+  const { data, error } = await requireDatabase().rpc('sellora_receive_customer_payment', {
     p_customer_id: input.customerId, p_amount: input.amount, p_method: input.method, p_reference: input.reference,
   });
   if (error) throw error;
@@ -184,14 +182,14 @@ export async function receiveCustomerCreditPayment(input: { customerId: string; 
 
 /** Converts whole hundreds of loyalty points into customer store credit. */
 export async function redeemCustomerLoyalty(customerId:string,points:number){
-  const {data,error}=await requireSupabase().rpc('sellora_redeem_loyalty',{p_customer_id:customerId,p_points:points});
+  const {data,error}=await requireDatabase().rpc('sellora_redeem_loyalty',{p_customer_id:customerId,p_points:points});
   if(error)throw error;
   return Number(data);
 }
 
 /** Reads one transaction with its immutable line, payment and base-currency snapshots. */
 export async function getSaleReceipt(saleId: string) {
-  const client = requireSupabase();
+  const client = requireDatabase();
   const [saleResult, itemsResult, paymentResult] = await Promise.all([
     client.from('sales').select('id, receipt_number, branch_id, warehouse_id, customer_id, currency_code, base_currency, subtotal, discount_total, tax_total, total, created_at').eq('id', saleId).single(),
     client.from('sale_items').select('product_name, sku, quantity, unit_price, discount_amount, tax_amount, line_total').eq('sale_id', saleId),

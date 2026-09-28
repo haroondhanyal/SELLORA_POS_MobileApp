@@ -1,5 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
-import { requireSupabase } from '@/services/supabase';
+import { requireDatabase } from '@/services/database';
+import { getCurrentUser } from '@/services/auth';
 
 export const supportedCurrencies = ['PKR', 'USD'] as const;
 export type CurrencyCode = typeof supportedCurrencies[number];
@@ -36,7 +37,7 @@ export async function cacheCurrencyRate(db: SQLiteDatabase, base: CurrencyCode, 
 
 /** Prefers an administrator's manual rate over the daily online rate. */
 export async function getManualCurrencyRate(base: CurrencyCode, quote: CurrencyCode) {
-  const { data, error } = await requireSupabase().from('exchange_rates')
+  const { data, error } = await requireDatabase().from('exchange_rates')
     .select('rate, updated_at').eq('base_currency', base).eq('quote_currency', quote).eq('source', 'manual').maybeSingle();
   if (error) throw error;
   if (!data) return null;
@@ -45,8 +46,8 @@ export async function getManualCurrencyRate(base: CurrencyCode, quote: CurrencyC
 
 /** Stores the business's base currency; the database allows only approved administrators. */
 export async function saveBaseCurrency(base: CurrencyCode) {
-  const client = requireSupabase();
-  const { data: { user } } = await client.auth.getUser();
+  const client = requireDatabase();
+  const user = await getCurrentUser();
   if (!user) throw new Error('Sign in as an administrator first.');
   const { error } = await client.from('business_currency').update({ base_currency: base, updated_by: user.id, updated_at: new Date().toISOString() }).eq('id', 1);
   if (error) throw error;
@@ -54,8 +55,8 @@ export async function saveBaseCurrency(base: CurrencyCode) {
 
 /** Saves a manual base-to-quote rate that takes priority over automatic updates. */
 export async function saveManualCurrencyRate(base: CurrencyCode, quote: CurrencyCode, rate: number) {
-  const client = requireSupabase();
-  const { data: { user } } = await client.auth.getUser();
+  const client = requireDatabase();
+  const user = await getCurrentUser();
   if (!user) throw new Error('Sign in as an administrator first.');
   const { error } = await client.from('exchange_rates').upsert({
     base_currency: base,

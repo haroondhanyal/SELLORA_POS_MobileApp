@@ -1,0 +1,35 @@
+{
+  "name": "sellora-api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "rest:dev": "node scripts/run-postgrest.mjs",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "db:migrate": "node dist/migrate-business.js",
+    "admin:bootstrap": "node scripts/promote-first-admin.mjs",
+    "auth:migrate": "auth migrate --config src/auth.ts --yes"
+  },
+  "dependencies": {
+    "@better-auth/expo": "^1.7.0",
+    "better-auth": "^1.7.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^5.1.0",
+    "pg": "^8.16.3"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.3",
+    "@types/node": "^22.19.0",
+    "@types/pg": "^8.15.5",
+    "auth": "^1.7.6",
+    "tsx": "^4.20.5",
+    "typescript": "~5.9.2"
+  }
+}

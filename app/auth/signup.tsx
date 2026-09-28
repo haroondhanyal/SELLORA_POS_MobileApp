@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Link, router } from 'expo-router';
+import { useEffect, useState } from 'react';
+import { Link, router, useLocalSearchParams } from 'expo-router';
 import { Alert, StyleSheet, Text, View } from 'react-native';
 import { AppButton } from '@/components/AppButton';
 import { Brand } from '@/components/Brand';
@@ -20,6 +20,8 @@ import type { UserRole } from '@/types/auth';
 
 /** Collects new account details and submits a role request for admin approval. */
 export default function SignupScreen() {
+  const { mode } = useLocalSearchParams<{ mode?: string }>();
+  const administratorRequest = mode === 'admin';
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -29,64 +31,74 @@ export default function SignupScreen() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [pin, setPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
-  const [role, setRole] = useState<UserRole>('cashier');
+  const [role, setRole] = useState<UserRole>(administratorRequest ? 'admin' : 'cashier');
   const [birthday, setBirthday] = useState<Date | null>(null);
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  async function submitSignup() {
-    const hasValidBirthday = Boolean(birthday && birthday <= new Date());
-    const hasValidDetails = name.trim().length >= 2
-      && email.includes('@')
-      && phone.trim().length >= 7
-      && hasValidBirthday
-      && password.length >= 8
-      && password === confirmPassword
-      && /^\d{4,6}$/.test(pin)
-      && pin === confirmPin;
+  useEffect(() => { setRole(administratorRequest ? 'admin' : 'cashier'); }, [administratorRequest]);
 
-    if (!hasValidDetails) {
-      Alert.alert(
-        'Check your details',
-        'Check your name, email, phone and date of birth. Passwords must match and PINs must match using 4 to 6 digits.',
-      );
+  async function submitSignup() {
+    const cleanName = name.trim().replace(/\s+/g, ' ');
+    const cleanEmail = email.trim().toLowerCase();
+    const phoneDigits = phone.replace(/\D/g, '');
+    const issues: string[] = [];
+    if (cleanName.length < 2) issues.push('Enter your full name (at least 2 characters).');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) issues.push('Enter a valid email address, such as name@example.com.');
+    if (phoneDigits.length < 7 || phoneDigits.length > 15) issues.push('Enter a phone number with 7 to 15 digits.');
+    if (!isValidBirthDate(birthday)) issues.push('Choose a valid date of birth that is not in the future.');
+    if (password.length < 8 || password.length > 128) issues.push('Password must be 8 to 128 characters.');
+    if (password !== confirmPassword) issues.push('The passwords do not match.');
+    if (!/^\d{4,6}$/.test(pin)) issues.push('Security PIN must contain 4 to 6 digits.');
+    if (pin !== confirmPin) issues.push('The security PINs do not match.');
+
+    if (issues.length) {
+      Alert.alert('Check your details', issues.join('\n'));
       return;
     }
 
     setBusy(true);
     try {
-      const fullPhone = `${countryCode} ${phone.trim()}`;
+      const fullPhone = `${countryCode} ${phoneDigits}`;
       const result = await signUp({
-        name,
-        email,
+        name: cleanName,
+        email: cleanEmail,
         password,
         phone: fullPhone,
         dateOfBirth: formatDate(birthday!),
         role,
       });
 
-      // Save the PIN verifier now, or keep it securely until email confirmation enables sign-in.
+      const signedIn = Boolean((result as { data?: unknown }).data);
+      const profileProvisioned = (result as { selloraProfileProvisioned?: boolean }).selloraProfileProvisioned !== false;
+      // Better Auth creates a signed-in session immediately; approval still gates app access.
       let pinSaved = true;
       try {
-        if (result.session) await setDevicePin(pin);
-        else await rememberSignupPin(email, pin);
+        if (signedIn) await setDevicePin(pin);
+        else await rememberSignupPin(cleanEmail, pin);
       } catch {
         pinSaved = false;
       }
 
-      await saveSignupPhotoIfSelected(result.session !== null);
+      let photoSaved = true;
+      try {
+        await saveSignupPhotoIfSelected(signedIn);
+      } catch {
+        photoSaved = false;
+      }
 
-      const message = `${result.session
+      const message = `${signedIn
         ? 'Your account is waiting for administrator approval.'
-        : 'Check your email to confirm your account, then wait for administrator approval.'}${pinSaved ? '' : ' Sign in after confirmation to set your device PIN.'}`;
+        : 'Sign in to finish setting up your account.'}${profileProvisioned ? '' : ' Your account was created, but its Sellora profile could not be loaded yet. It will be retried when you sign in with the server available.'}${pinSaved ? '' : ' You can set your device PIN after signing in.'}${photoSaved ? '' : ' Your account was created, but the profile photo was not saved; add it later from your profile.'}`;
 
       Alert.alert('Account request sent', message, [
         { text: 'Continue', onPress: () => router.replace('/auth/pending-approval') },
       ]);
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Please try again.';
       Alert.alert(
         'Could not create account',
-        error instanceof Error ? error.message : 'Please try again.',
+        errorMessage,
       );
     } finally {
       setBusy(false);
@@ -97,15 +109,15 @@ export default function SignupScreen() {
   async function saveSignupPhotoIfSelected(hasSession: boolean) {
     if (!avatarUri) return;
     if (!hasSession) {
-      await rememberPendingAvatar(email, avatarUri);
+      await rememberPendingAvatar(email.trim().toLowerCase(), avatarUri);
       return;
     }
 
     try {
       await uploadProfileAvatar(avatarUri);
-      await clearPendingAvatar(email);
+      await clearPendingAvatar(email.trim().toLowerCase());
     } catch {
-      await rememberPendingAvatar(email, avatarUri);
+      await rememberPendingAvatar(email.trim().toLowerCase(), avatarUri);
     }
   }
 
@@ -114,8 +126,8 @@ export default function SignupScreen() {
       <View style={styles.page}>
         <View style={styles.authHeader}><Brand /><AppearanceToggle /></View>
         <View>
-          <Text style={styles.title}>Create account</Text>
-          <Text style={styles.subtitle}>Your administrator will review this access request.</Text>
+          <Text style={styles.title}>{administratorRequest ? 'Request administrator access' : 'Create account'}</Text>
+          <Text style={styles.subtitle}>{administratorRequest ? 'This separate request is for administrator access. An existing administrator must approve it; signup cannot grant admin access by itself.' : 'Your administrator will review this access request.'}</Text>
 
           <ProfileImagePicker label="Profile photo (max 25 MB)" uri={avatarUri} onChange={setAvatarUri} />
           <FormField label="Full name" placeholder="Enter your full name" value={name} onChangeText={setName} autoComplete="name" />
@@ -142,13 +154,21 @@ export default function SignupScreen() {
           />
           <PinField label="Security PIN (4–6 digits)" value={pin} onChangeText={setPin} />
           <PinField label="Confirm security PIN" value={confirmPin} onChangeText={setConfirmPin} />
-          <RolePicker value={role} onChange={setRole} />
+          {administratorRequest ? null : <RolePicker value={role} onChange={setRole} includeAdmin={false} />}
         </View>
-        <AppButton title="Send account request" onPress={submitSignup} busy={busy} />
-        <Link href="/auth/login" style={styles.signInLink}>Already have an account? Sign in</Link>
+        <AppButton title={administratorRequest ? 'Send administrator request' : 'Send account request'} onPress={submitSignup} busy={busy} />
+        <Link href={administratorRequest ? { pathname: '/auth/login', params: { mode: 'admin' } } : '/auth/login'} style={styles.signInLink}>{administratorRequest ? 'Already an administrator? Sign in' : 'Already have an account? Sign in'}</Link>
       </View>
     </Screen>
   );
+}
+
+function isValidBirthDate(date: Date | null): date is Date {
+  if (!date || Number.isNaN(date.getTime())) return false;
+  const today = new Date();
+  const selectedDay = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const todayDay = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+  return selectedDay <= todayDay;
 }
 
 /** Formats a calendar date without shifting it to another UTC day. */

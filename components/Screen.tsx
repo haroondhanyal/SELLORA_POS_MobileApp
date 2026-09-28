@@ -9,9 +9,9 @@ import { ThemeStyle } from '@/components/ThemeStyle';
 /** Shared safe-area and scrolling layout for independent screens. */
 export function Screen({ children, scroll = true }: PropsWithChildren<{ scroll?: boolean }>) {
   const theme = useTheme();
-  return <SafeAreaView style={[styles.safe, { backgroundColor: theme.colors.background }]} edges={['top', 'left', 'right']}>
+  return <SafeAreaView style={[styles.safe, { backgroundColor: theme.colors.background }]} edges={['top', 'right', 'bottom', 'left']}>
     <KeyboardFormProvider><KeyboardAvoidingView style={styles.keyboard} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={0}>
-    {scroll ? <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} contentContainerStyle={styles.content}><ThemeStyle>{children}</ThemeStyle></ScrollView> : <View style={styles.content}><ThemeStyle>{children}</ThemeStyle></View>}
+    {scroll ? <ScrollView automaticallyAdjustKeyboardInsets keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} contentContainerStyle={styles.content}><ThemeStyle>{children}</ThemeStyle></ScrollView> : <View style={styles.content}><ThemeStyle>{children}</ThemeStyle></View>}
     </KeyboardAvoidingView></KeyboardFormProvider>
   </SafeAreaView>;
 }

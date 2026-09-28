@@ -4,7 +4,7 @@ import { useAuth } from '@/providers/AuthProvider';
 import { useConnection } from '@/providers/ConnectionProvider';
 import { cacheCurrencyRate, fetchCurrencyRate, formatCurrency, getCachedCurrencyRate, getManualCurrencyRate, saveBaseCurrency as saveBusinessBaseCurrency, saveManualCurrencyRate } from '@/services/currency';
 import { supportedCurrencies, type CurrencyCode, type CurrencyRate } from '@/services/currency';
-import { requireSupabase } from '@/services/supabase';
+import { requireDatabase } from '@/services/database';
 
 type CurrencyState = {
   baseCurrency: CurrencyCode;
@@ -51,7 +51,7 @@ export function CurrencyProvider({ children }: PropsWithChildren) {
 
       if (!session || !connected || mode !== 'online') return;
       try {
-        const { data, error } = await requireSupabase().from('business_currency').select('base_currency').eq('id', 1).maybeSingle();
+        const { data, error } = await requireDatabase().from('business_currency').select('base_currency').eq('id', 1).maybeSingle();
         if (error) throw error;
         const savedBase = data?.base_currency as CurrencyCode | undefined;
         if (active && savedBase) {

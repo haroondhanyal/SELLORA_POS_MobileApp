@@ -7,7 +7,7 @@ import { Screen } from '@/components/Screen';
 import { useAuth } from '@/providers/AuthProvider';
 import { useCurrency } from '@/providers/CurrencyProvider';
 import { getProduct, getProductImageUrl, type CatalogProduct } from '@/services/catalog';
-import { requireSupabase } from '@/services/supabase';
+import { requireDatabase } from '@/services/database';
 import { colors } from '@/theme/colors';
 
 /** Read-only product detail route available to any role allowed to browse products. */
@@ -24,7 +24,7 @@ export default function ProductDetailsScreen() {
     getProduct(id).then(async (item) => {
       setProduct(item);
       setImageUrl(await getProductImageUrl(item.image_storage_path));
-      const { data, error } = await requireSupabase().from('product_variants').select('id, name, sku, sale_price').eq('product_id', id).eq('is_active', true).order('name');
+      const { data, error } = await requireDatabase().from('product_variants').select('id, name, sku, sale_price').eq('product_id', id).eq('is_active', true).order('name');
       if (error) throw error;
       setVariants((data ?? []) as typeof variants);
     }).catch((error) => Alert.alert('Could not load product', error instanceof Error ? error.message : 'Please try again.'));

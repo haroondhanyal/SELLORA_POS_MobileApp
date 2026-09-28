@@ -35,6 +35,8 @@ export default function WelcomeScreen() {
       <View style={styles.actions}>
         <AppButton title="Create account" onPress={() => router.push('/auth/signup')} />
         <AppButton title="Sign in" secondary onPress={() => router.push('/auth/login')} />
+        <AppButton title="Administrator portal" secondary onPress={() => router.push('/auth/admin-portal')} />
+        <AppButton title="Login as guest · Explore demo" secondary onPress={() => router.push('/guest')} />
         <Text style={[styles.footer, { color: theme.colors.muted }]}>Secure access for your retail team</Text>
       </View>
     </View>

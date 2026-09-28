@@ -8,7 +8,7 @@ import { useTheme } from '@/theme/ThemeProvider';
 export function PinField({ label, value, onChangeText }: { label: string; value: string; onChangeText: (value: string) => void }) {
   const [visible, setVisible] = useState(false);
   const theme = useTheme();
-  return <View style={styles.row}><View style={styles.input}><FormField label={label} value={value} onChangeText={(text) => onChangeText(text.replace(/\D/g, '').slice(0, 6))} keyboardType="number-pad" secureTextEntry={!visible} maxLength={6} autoComplete="off" /></View><Pressable accessibilityRole="button" accessibilityLabel={visible ? 'Hide PIN' : 'Show PIN'} onPress={() => setVisible(!visible)} style={styles.toggle}><EyeIcon visible={visible} color={theme.colors.muted} /></Pressable></View>;
+  return <View style={styles.row}><View style={styles.input}><FormField label={label} value={value} onChangeText={(text) => onChangeText(text.replace(/\D/g, '').slice(0, 6))} keyboardType="number-pad" secureTextEntry={!visible} maxLength={6} autoComplete="off" /></View><Pressable accessibilityRole="button" accessibilityState={{ selected: visible }} accessibilityLabel={visible ? 'Hide PIN' : 'Show PIN'} accessibilityHint="Toggles PIN visibility" hitSlop={8} onPress={() => setVisible(!visible)} style={styles.toggle}><EyeIcon visible={visible} color={theme.colors.muted} /></Pressable></View>;
 }
 
 const styles = StyleSheet.create({ row: { flexDirection: 'row', alignItems: 'flex-end' }, input: { flex: 1 }, toggle: { marginLeft: 8, padding: 12, marginBottom: 3 } });

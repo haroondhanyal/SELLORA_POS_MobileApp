@@ -17,8 +17,8 @@ import { AppButton } from '@/components/AppButton';
 import { Screen } from '@/components/Screen';
 import { useAuth } from '@/providers/AuthProvider';
 import { canManageUsers } from '@/services/permissions';
-import { assignUserBranches, listBranches, type Branch } from '@/services/branches';
-import { requireSupabase } from '@/services/supabase';
+import { assignUserBranches, listBranchesForAdministration, type Branch } from '@/services/branches';
+import { requireDatabase } from '@/services/database';
 import { colors } from '@/theme/colors';
 import type { ApprovalStatus, UserProfile, UserRole } from '@/types/auth';
 
@@ -45,7 +45,7 @@ export default function UsersScreen() {
 
     setRefreshing(true);
     try {
-      const { data, error } = await requireSupabase()
+      const { data, error } = await requireDatabase()
         .from('profiles')
         .select('id, full_name, email, phone, role, requested_role, approval_status, date_of_birth, avatar_storage_path, primary_branch_id')
         .eq('approval_status', filter)
@@ -55,9 +55,12 @@ export default function UsersScreen() {
       const loadedUsers = (data ?? []) as UserProfile[];
       setUsers(loadedUsers);
       if (profile?.role === 'admin') {
+        const assignmentsRequest = loadedUsers.length
+          ? requireDatabase().from('user_branches').select('user_id, branch_id').in('user_id', loadedUsers.map((user) => user.id))
+          : Promise.resolve({ data: [], error: null });
         const [branchOptions, assignmentResult] = await Promise.all([
-          listBranches(),
-          requireSupabase().from('user_branches').select('user_id, branch_id').in('user_id', loadedUsers.map((user) => user.id)),
+          listBranchesForAdministration(),
+          assignmentsRequest,
         ]);
         if (assignmentResult.error) throw assignmentResult.error;
         setBranches(branchOptions);
@@ -78,7 +81,7 @@ export default function UsersScreen() {
     } finally {
       setRefreshing(false);
     }
-  }, [filter, hasUserAccess]);
+  }, [filter, hasUserAccess, profile?.role]);
 
   useEffect(() => {
     void loadUsers();
@@ -93,7 +96,7 @@ export default function UsersScreen() {
     const nextRole = status === 'approved' ? (roles[user.id] ?? defaultRole) : user.role;
 
     try {
-      const { error } = await requireSupabase()
+      const { error } = await requireDatabase()
         .from('profiles')
         .update({ role: nextRole, approval_status: status })
         .eq('id', user.id);

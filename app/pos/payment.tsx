@@ -90,7 +90,7 @@ export default function PosPaymentScreen() {
       <View style={styles.page}>
         <AppHeader profile={profile} />
         <Text style={styles.title}>Payment</Text>
-        {mode === 'offline' ? <Text style={styles.help}>This sale is saved on this device and will sync when online. Customer credit and store credit need a connection.</Text> : null}
+        {mode === 'offline' ? <Text style={styles.help}>This sale is saved on this device and will sync when online. Cached customer credit is reserved locally; the server rechecks its balance and limit during sync.</Text> : null}
         <Text style={styles.help}>All amounts are entered in {baseCurrency}. The saved receipt keeps the business base currency.</Text>
         <View style={styles.summary}>
           <Text style={styles.totalLabel}>Amount due</Text>
@@ -100,7 +100,7 @@ export default function PosPaymentScreen() {
         {payments.map((payment, index) => (
           <View key={index} style={styles.paymentCard}>
             <View style={styles.rowTitle}><Text style={styles.rowHeading}>Payment {index + 1}</Text>{payments.length > 1 ? <Pressable onPress={() => removePayment(index)}><Text style={styles.remove}>Remove</Text></Pressable> : null}</View>
-            <OptionPicker label="Method" value={payment.method} options={mode === 'offline' ? paymentMethods.filter((item) => !['customer_credit', 'store_credit'].includes(item.id)) : paymentMethods} onChange={(value) => updatePayment(index, 'method', value)} />
+            <OptionPicker label="Method" value={payment.method} options={paymentMethods} onChange={(value) => updatePayment(index, 'method', value)} />
             <FormField label={`Amount (${baseCurrency})`} value={payment.amount} onChangeText={(value) => updatePayment(index, 'amount', value)} keyboardType="decimal-pad" />
             <FormField label="Reference (optional)" value={payment.reference} onChangeText={(value) => updatePayment(index, 'reference', value)} />
           </View>

@@ -1,0 +1,26 @@
+[Unit]
+Description=Sellora API
+Wants=network-online.target
+After=network-online.target postgresql.service
+
+[Service]
+Type=simple
+User=sellora
+Group=sellora
+WorkingDirectory=/opt/sellora/backend
+EnvironmentFile=/etc/sellora/sellora.env
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node /opt/sellora/backend/dist/server.js
+Restart=on-failure
+RestartSec=3
+StateDirectory=sellora
+StateDirectoryMode=0750
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/sellora
+
+[Install]
+WantedBy=multi-user.target

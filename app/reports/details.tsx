@@ -86,7 +86,7 @@ function summarize<T extends { quantity?: number; line_total?: number; total?: n
   return [...grouped.entries()].map(([name, value]) => ({ name, ...value })).sort((left, right) => right.amount - left.amount).slice(0, 10);
 }
 
-// Supabase relation fields may be typed as either an object or a one-item array.
+// PostgREST relation fields may be typed as either an object or a one-item array.
 function relation<T>(value: T | T[] | null | undefined): T | undefined {
   return Array.isArray(value) ? value[0] : value ?? undefined;
 }

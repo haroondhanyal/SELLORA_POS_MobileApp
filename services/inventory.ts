@@ -1,4 +1,4 @@
-import { requireSupabase } from '@/services/supabase';
+import { requireDatabase } from '@/services/database';
 import * as SQLite from 'expo-sqlite';
 import type { SellableProduct } from '@/providers/CartProvider';
 import { decryptLocalJson, encryptLocalJson } from '@/services/localEncryption';
@@ -16,7 +16,7 @@ export type InventoryRow = {
 
 /** Loads only stock rows visible to the signed-in user's assigned branches. */
 export async function listInventory() {
-  const { data, error } = await requireSupabase().from('inventory')
+  const { data, error } = await requireDatabase().from('inventory')
     .select('id, warehouse_id, product_id, variant_id, quantity, products(name, sku, sale_price, minimum_stock, reorder_level, image_storage_path), product_variants(name, sku), warehouses(name, branch_id)')
     .order('updated_at', { ascending: false }).limit(500);
   if (error) throw error;
@@ -55,7 +55,7 @@ export async function listCachedInventory(branchId:string) {
 
 /** Makes an atomic stock change through the permission-checked database function. */
 export async function adjustStock(input: { warehouseId: string; productId: string; variantId: string | null; quantityDelta: number; reason: string }) {
-  const { data, error } = await requireSupabase().rpc('sellora_adjust_stock', {
+  const { data, error } = await requireDatabase().rpc('sellora_adjust_stock', {
     p_warehouse_id: input.warehouseId,
     p_product_id: input.productId,
     p_variant_id: input.variantId,
@@ -68,7 +68,7 @@ export async function adjustStock(input: { warehouseId: string; productId: strin
 
 /** Reads stock adjustment history for all branches visible to the current account. */
 export async function listStockAdjustments() {
-  const { data, error } = await requireSupabase().from('stock_adjustments')
+  const { data, error } = await requireDatabase().from('stock_adjustments')
     .select('id, quantity_delta, reason, created_at, products(name, sku), product_variants(name, sku), warehouses(name, branch_id)')
     .order('created_at', { ascending: false }).limit(200);
   if (error) throw error;

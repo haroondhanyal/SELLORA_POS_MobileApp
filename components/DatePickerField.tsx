@@ -15,9 +15,15 @@ export function DatePickerField({ label, value, onChange }: { label: string; val
     setDraft(date);
     if (Platform.OS === 'android') { onChange(date); setOpen(false); }
   }
+  function openPicker() {
+    // The profile date may arrive asynchronously after this component mounts.
+    // Start each picker session from the latest saved value instead of stale state.
+    setDraft(value ?? new Date(2000, 0, 1));
+    setOpen(true);
+  }
   const fieldBackground = highContrast ? '#000000' : theme.colors.surface;
   const fieldText = highContrast ? '#FFFFFF' : theme.colors.text;
-  return <View style={styles.group}><Text style={[styles.label, { color: theme.colors.text }]}>{label}</Text><Pressable accessibilityRole="button" onPress={() => setOpen(true)} style={[styles.field, { backgroundColor: fieldBackground, borderColor: highContrast ? '#FFFFFF' : theme.colors.border, borderWidth: highContrast ? 2 : 1 }]}><Text style={[styles.value, { color: value || highContrast ? fieldText : theme.colors.muted }]}>{value ? `📅  ${value.toLocaleDateString()}` : '📅  Select date'}</Text></Pressable>
+  return <View style={styles.group}><Text style={[styles.label, { color: theme.colors.text }]}>{label}</Text><Pressable accessibilityRole="button" accessibilityLabel={`${label}: ${value ? value.toLocaleDateString() : 'Select date'}`} onPress={openPicker} style={[styles.field, { backgroundColor: fieldBackground, borderColor: highContrast ? '#FFFFFF' : theme.colors.border, borderWidth: highContrast ? 2 : 1 }]}><Text style={[styles.value, { color: value || highContrast ? fieldText : theme.colors.muted }]}>{value ? `📅  ${value.toLocaleDateString()}` : '📅  Select date'}</Text></Pressable>
     {open && Platform.OS === 'android' ? <DateTimePicker value={draft} mode="date" display="calendar" maximumDate={new Date()} onValueChange={handleValueChange} onDismiss={() => setOpen(false)} /> : null}
     <Modal transparent visible={open && Platform.OS === 'ios'} animationType="slide" onRequestClose={() => setOpen(false)}><View style={[styles.backdrop, { backgroundColor: theme.colors.overlay }]}><View style={[styles.sheet, { backgroundColor: theme.colors.surface }]}><Text style={[styles.sheetTitle, { color: theme.colors.text }]}>Choose date</Text><DateTimePicker value={draft} mode="date" display="inline" maximumDate={new Date()} onValueChange={handleValueChange} onDismiss={() => setOpen(false)} /><View style={styles.actions}><Pressable onPress={() => setOpen(false)}><Text style={[styles.cancel, { color: theme.colors.text }]}>Cancel</Text></Pressable><Pressable onPress={() => { onChange(draft); setOpen(false); }}><Text style={[styles.done, { color: theme.colors.tealDark }]}>Done</Text></Pressable></View></View></View></Modal>
   </View>;

@@ -1,11 +1,13 @@
 import * as SecureStore from 'expo-secure-store';
 import * as Crypto from 'expo-crypto';
-import { requireSupabase } from '@/services/supabase';
+import { getCurrentUser } from '@/services/auth';
+import { getOfflineAccount } from '@/services/offlineIdentity';
 
-function pinKey(userId: string) { return `sellora_device_pin:${userId}`; }
-function pendingPinKey(emailHash: string) { return `sellora_pending_pin:${emailHash}`; }
-function failedKey(userId: string) { return `sellora_pin_failed:${userId}`; }
-function lockedUntilKey(userId: string) { return `sellora_pin_lock_until:${userId}`; }
+function secureKey(prefix: string, id: string) { return `${prefix}_${id.replace(/[^A-Za-z0-9_]/g, '_')}`; }
+function pinKey(userId: string) { return secureKey('sellora_device_pin', userId); }
+function pendingPinKey(emailHash: string) { return secureKey('sellora_pending_pin', emailHash); }
+function failedKey(userId: string) { return secureKey('sellora_pin_failed', userId); }
+function lockedUntilKey(userId: string) { return secureKey('sellora_pin_lock_until', userId); }
 function toHex(bytes: Uint8Array) { return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join(''); }
 
 async function createPinVerifier(pin: string) {
@@ -17,10 +19,9 @@ async function createPinVerifier(pin: string) {
 
 /** Stores a salted PIN verifier in encrypted device storage; the PIN itself is never saved. */
 export async function setDevicePin(pin: string) {
-  const client = requireSupabase();
-  const { data: { session } } = await client.auth.getSession();
-  if (!session) throw new Error('Sign in before setting a PIN.');
-  await SecureStore.setItemAsync(pinKey(session.user.id), await createPinVerifier(pin));
+  const user = await getCurrentUser();
+  if (!user) throw new Error('Sign in before setting a PIN.');
+  await SecureStore.setItemAsync(pinKey(user.id), await createPinVerifier(pin));
 }
 
 /** Keeps only a salted verifier until email-confirmation signup gets a session. */
@@ -35,9 +36,8 @@ export async function rememberSignupPin(email: string, pin: string) {
 
 /** Attaches a signup PIN to the authenticated account, then removes the temporary verifier. */
 export async function activateSignupPin(email: string) {
-  const client = requireSupabase();
-  const { data: { session } } = await client.auth.getSession();
-  if (!session) return false;
+  const user = await getCurrentUser();
+  if (!user) return false;
 
   const emailHash = await Crypto.digestStringAsync(
     Crypto.CryptoDigestAlgorithm.SHA256,
@@ -47,40 +47,41 @@ export async function activateSignupPin(email: string) {
   const verifier = await SecureStore.getItemAsync(key);
   if (!verifier) return false;
 
-  await SecureStore.setItemAsync(pinKey(session.user.id), verifier);
+  await SecureStore.setItemAsync(pinKey(user.id), verifier);
   await SecureStore.deleteItemAsync(key);
   return true;
 }
 
-/** Verifies the entered PIN only when the same user's Supabase session exists on this device. */
+/** Verifies the entered PIN only when the same user's Sellora session exists on this device. */
 export async function verifyDevicePin(pin: string, email: string) {
-  const client = requireSupabase();
-  const { data: { session } } = await client.auth.getSession();
-  if (!session || session.user.email?.toLowerCase() !== email.trim().toLowerCase()) return false;
-  const lockedUntil = Number(await SecureStore.getItemAsync(lockedUntilKey(session.user.id)) ?? '0');
+  const user = await getCurrentUser().catch(() => null)
+    ?? (await getOfflineAccount())?.user
+    ?? null;
+  if (!user || user.email?.toLowerCase() !== email.trim().toLowerCase()) return false;
+  const lockedUntil = Number(await SecureStore.getItemAsync(lockedUntilKey(user.id)) ?? '0');
   if (Date.now() < lockedUntil) return false;
-  const saved = await SecureStore.getItemAsync(pinKey(session.user.id));
+  const saved = await SecureStore.getItemAsync(pinKey(user.id));
   if (!saved) return false;
   const [salt, expected] = saved.split(':');
   const actual = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, `${salt}:${pin}`);
   if (actual === expected) {
-    await SecureStore.deleteItemAsync(failedKey(session.user.id));
-    await SecureStore.deleteItemAsync(lockedUntilKey(session.user.id));
+    await SecureStore.deleteItemAsync(failedKey(user.id));
+    await SecureStore.deleteItemAsync(lockedUntilKey(user.id));
     return true;
   }
-  const failures = Number(await SecureStore.getItemAsync(failedKey(session.user.id)) ?? '0') + 1;
-  await SecureStore.setItemAsync(failedKey(session.user.id), String(failures));
+  const failures = Number(await SecureStore.getItemAsync(failedKey(user.id)) ?? '0') + 1;
+  await SecureStore.setItemAsync(failedKey(user.id), String(failures));
   if (failures >= 5) {
-    await SecureStore.setItemAsync(lockedUntilKey(session.user.id), String(Date.now() + 30_000));
-    await SecureStore.deleteItemAsync(failedKey(session.user.id));
+    await SecureStore.setItemAsync(lockedUntilKey(user.id), String(Date.now() + 30_000));
+    await SecureStore.deleteItemAsync(failedKey(user.id));
   }
   return false;
 }
 
 /** Removes PIN unlock for this signed-in user. */
 export async function clearDevicePin() {
-  const { data: { session } } = await requireSupabase().auth.getSession();
-  if (session) await SecureStore.deleteItemAsync(pinKey(session.user.id));
+  const user = await getCurrentUser();
+  if (user) await SecureStore.deleteItemAsync(pinKey(user.id));
 }
 
 export async function hasDevicePin(userId: string) {

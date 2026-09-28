@@ -10,7 +10,7 @@ import { useAuth } from '@/providers/AuthProvider';
 import { useCurrency } from '@/providers/CurrencyProvider';
 import { listBranchSalesAgents } from '@/services/customers';
 import { saveCommissionRule, saveSalesTarget } from '@/services/workforce';
-import { requireSupabase } from '@/services/supabase';
+import { requireDatabase } from '@/services/database';
 import { colors } from '@/theme/colors';
 
 type SalesTarget = { id: string; agent_id: string; period_type: string; period_start: string; target_amount: number; profiles?: { full_name: string } | null };
@@ -35,7 +35,7 @@ export default function TargetsScreen() {
     try {
       const [people, targetResult] = await Promise.all([
         listBranchSalesAgents(branchId),
-        requireSupabase().from('sales_targets')
+        requireDatabase().from('sales_targets')
           .select('id,agent_id,period_type,period_start,target_amount,profiles!sales_targets_agent_id_fkey(full_name)')
           .eq('branch_id', branchId).order('period_start', { ascending: false }).limit(100),
       ]);
@@ -45,7 +45,7 @@ export default function TargetsScreen() {
       if (!agentId && people[0]) setAgentId(people[0].id);
       const earliest = targetResult.data?.reduce((start, target) => target.period_start < start ? target.period_start : start, targetResult.data[0]?.period_start ?? localDate(new Date()));
       if (earliest) {
-        const salesResult = await requireSupabase().from('sales').select('sales_agent_id,total,created_at,status')
+        const salesResult = await requireDatabase().from('sales').select('sales_agent_id,total,created_at,status')
           .eq('branch_id', branchId).gte('created_at', new Date(`${earliest}T00:00:00`).toISOString()).limit(5000);
         if (salesResult.error) throw salesResult.error;
         setSales((salesResult.data ?? []) as TargetSale[]);
