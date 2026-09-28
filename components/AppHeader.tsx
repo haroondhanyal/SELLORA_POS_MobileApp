@@ -31,9 +31,14 @@ export function AppHeader({ profile }: { profile: UserProfile | null }) {
   }, [db, profile?.id]);
 
   useEffect(() => {
+    let active = true;
+    setAvatarUri(null);
     if (profile?.avatar_storage_path) {
-      getAvatarUrl(profile.avatar_storage_path).then(setAvatarUri).catch(() => setAvatarUri(null));
-    } else setAvatarUri(null);
+      getAvatarUrl(profile.avatar_storage_path)
+        .then((uri) => { if (active) setAvatarUri(uri); })
+        .catch(() => { if (active) setAvatarUri(null); });
+    }
+    return () => { active = false; };
   }, [profile?.avatar_storage_path]);
 
   async function saveMode(next: 'online' | 'offline') {

@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Animated, Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Alert, Animated, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { router, type Href } from 'expo-router';
 import { useAuth } from '@/providers/AuthProvider';
 import { clearDevicePin } from '@/services/pin';
 import { signOut } from '@/services/auth';
+import { getAvatarUrl } from '@/services/avatars';
 import { useTheme } from '@/theme/ThemeProvider';
 
 type GuestSection = 'overview' | 'pos' | 'products' | 'inventory' | 'customers' | 'purchases' | 'expenses' | 'reports' | 'approvals' | 'team' | 'branches' | 'settings' | 'profile';
@@ -29,6 +30,18 @@ export function SlideDrawer({ visible, onClose, mode = 'app', onGuestNavigate }:
   const translateX = useRef(new Animated.Value(-drawerWidth)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   const [mounted, setMounted] = useState(visible);
+  const [avatarUri, setAvatarUri] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    setAvatarUri(null);
+    if (mode === 'app' && profile?.avatar_storage_path) {
+      void getAvatarUrl(profile.avatar_storage_path)
+        .then((uri) => { if (active) setAvatarUri(uri); })
+        .catch(() => { if (active) setAvatarUri(null); });
+    }
+    return () => { active = false; };
+  }, [mode, profile?.avatar_storage_path, visible]);
 
   useEffect(() => {
     if (visible) {
@@ -122,7 +135,13 @@ export function SlideDrawer({ visible, onClose, mode = 'app', onGuestNavigate }:
       <Pressable accessibilityRole="button" accessibilityLabel="Close navigation menu" onPress={onClose} style={StyleSheet.absoluteFill} />
       <Animated.View style={[styles.drawer, { width: drawerWidth, backgroundColor: theme.colors.surface, transform: [{ translateX }] }]}>
         <View style={[styles.drawerHeader, { borderBottomColor: theme.colors.border }]}>
-          <View style={[styles.avatar, { backgroundColor: theme.colors.surfaceTint }]}><Text style={[styles.avatarText, { color: theme.colors.tealDark }]}>{mode === 'guest' ? 'G' : initials(profile?.full_name)}</Text></View>
+          {avatarUri ? (
+            <Image source={{ uri: avatarUri }} style={styles.avatar} onError={() => setAvatarUri(null)} />
+          ) : (
+            <View style={[styles.avatar, styles.avatarFallback, { backgroundColor: theme.colors.surfaceTint }]}>
+              <Text style={[styles.avatarText, { color: theme.colors.tealDark }]}>{mode === 'guest' ? 'G' : initials(profile?.full_name)}</Text>
+            </View>
+          )}
           <View style={styles.identity}>
             <Text numberOfLines={1} style={[styles.name, { color: theme.colors.text }]}>{mode === 'guest' ? 'Guest preview' : profile?.full_name || 'Sellora account'}</Text>
             <Text style={[styles.role, { color: theme.colors.muted }]}>{mode === 'guest' ? 'Sample data · read only' : profile?.role.replaceAll('_', ' ') || 'Signed in'}</Text>
@@ -169,7 +188,8 @@ const styles = StyleSheet.create({
   backdrop: { ...StyleSheet.absoluteFill, backgroundColor: '#000000' },
   drawer: { height: '100%', paddingTop: 54, paddingBottom: 20, elevation: 20, shadowColor: '#000', shadowOffset: { width: 5, height: 0 }, shadowOpacity: 0.18, shadowRadius: 18 },
   drawerHeader: { flexDirection: 'row', alignItems: 'center', gap: 11, paddingHorizontal: 17, paddingBottom: 18, borderBottomWidth: StyleSheet.hairlineWidth },
-  avatar: { width: 44, height: 44, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+  avatar: { width: 44, height: 44, borderRadius: 15 },
+  avatarFallback: { alignItems: 'center', justifyContent: 'center' },
   avatarText: { fontWeight: '900', fontSize: 16 },
   identity: { flex: 1 },
   name: { fontWeight: '900', fontSize: 15 },

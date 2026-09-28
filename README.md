@@ -19,7 +19,7 @@ Sellora brings checkout, stock, purchasing, customer accounts, staff access and 
 | **Point of sale** | Product search, barcode workflow, cart, discounts, customer selection, split payments, receipts and returns. |
 | **Catalog and stock** | Products, variants, categories, brands, warehouses, inventory adjustments and branch transfers. |
 | **Retail operations** | Customers and store credit, suppliers, purchase orders, expenses, shifts and commissions. |
-| **People and access** | Account requests, administrator approval, team roles, permission catalog, branch assignments, profile settings and online presence. |
+| **People and access** | Account requests, administrator approval, team roles, permission catalog, branch assignments, profile settings and online presence. Updated profile photos appear in the shared header and drawer for every role. |
 | **Business overview** | Sales reports, cashier activity, targets, finance summaries, notifications and permission-scoped Sellora Insights. |
 | **Flexible access** | A read-only guest tour, device PIN unlock, optional Remember me on the sign-in screen, and an app drawer for navigation and account actions. |
 | **Offline work** | Cached product and branch data plus encrypted queues for supported sales, customers, expenses and product edits; queued sales are checked by the server when they sync. |
@@ -112,6 +112,27 @@ Replace the example address with the account's email. The bootstrap refuses to p
 
 After setup, create a branch, warehouse, catalog and opening stock. Account registration does not depend on email delivery; password recovery requires a configured local sendmail-compatible mail service. See [`backend/README.md`](backend/README.md) for mail and database setup.
 
+## End-to-end app flow
+
+```mermaid
+flowchart TD
+    A[Welcome] --> B{Choose access}
+    B -->|Guest preview| C[Read-only sample workspace]
+    B -->|Create account| D[Request team access]
+    D --> E[Pending approval]
+    E --> F{Administrator review}
+    F -->|Reject| G[Request rejected]
+    F -->|Approve role and branch| H[Sign in]
+    H --> I[Role and permission based workspace]
+    I --> J{Connection state}
+    J -->|Online| K[Read and save through Sellora API]
+    J -->|Offline| L[PIN unlock and encrypted local queue]
+    L -->|Connection restored| M[Sync and validate queued work]
+    M --> K
+```
+
+The first administrator is provisioned once with the bootstrap command above. After that, administrators review new requests and maintain team access in the app. During offline work, queued transactions stay attached to their original user and are revalidated by the server when synchronized.
+
 ## Online and offline behavior
 
 The phone must be able to reach the Sellora API for online features. Previously signed-in users can unlock with their device PIN while disconnected. The app keeps supported cached catalog, branch and warehouse data available locally. Cash/card and customer/store-credit sales, customer creation, expenses (including staged receipt images), and product or variant edits can be queued on device. The local queue is encrypted, and the server rechecks permissions, stock, prices and customer credit when work syncs. Some administrator, purchasing and stock-receiving actions require a live API connection. See the API guide for the current migration and offline boundaries.
@@ -135,6 +156,12 @@ git diff --check
 Linux service and Nginx templates are in [`deploy/`](deploy/). A public installation still needs a provisioned server, DNS, HTTPS and protected production environment variables. Do not expose PostgreSQL or PostgREST directly to the internet. Back up the PostgreSQL database and private file storage together.
 
 The local database setup creates the Sellora schema; it does not automatically import accounts or business data from an older hosted database. Review and verify any export/import before retiring the previous service. Sessions must be re-established after an account migration. Deployment, mail delivery and real-device offline sync need verification in the target environment.
+
+## Security and production readiness
+
+The app sends business requests through the Sellora API, which binds database operations to the authenticated user and relies on PostgreSQL row-level policies and server-side permission checks. Account approval controls access; the public signup flow cannot grant administrator approval. Private media uses authenticated access checks and short-lived signed links. Local queued business data is encrypted, device PIN verification is stored in SecureStore, and Remember me is opt-in and uses secure device storage.
+
+Before exposing a deployment to the public internet, set a production-only `TRUSTED_ORIGINS` list (do not keep the broad Expo development origin), use HTTPS, protect unique server secrets, keep PostgreSQL and PostgREST private, configure mail delivery, and test database/file backups and restores. Review dependency advisories and deployment-specific access rules before launch. This repository has not had an independent penetration test or a production infrastructure audit, so those target-environment checks remain part of launch readiness.
 
 ## Project map
 
