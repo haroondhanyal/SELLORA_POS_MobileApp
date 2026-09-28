@@ -146,10 +146,12 @@ Run these from the repository root:
 ```sh
 npm run typecheck
 npm run api:build
+npm audit
+npm --prefix backend audit
 git diff --check
 ```
 
-`GET /health` checks API/database connectivity. The optional health-only load script is documented in [`backend/README.md`](backend/README.md); it does not measure authenticated signup or checkout capacity.
+The mobile and backend dependency audits currently report zero known advisories; rerun them before releases because advisories change over time. `GET /health` checks API/database connectivity. The optional health-only load script is documented in [`backend/README.md`](backend/README.md); it does not measure authenticated signup or checkout capacity.
 
 ## Deployment and data migration
 
@@ -161,7 +163,7 @@ The local database setup creates the Sellora schema; it does not automatically i
 
 The app sends business requests through the Sellora API, which binds database operations to the authenticated user and relies on PostgreSQL row-level policies and server-side permission checks. Account approval controls access; the public signup flow cannot grant administrator approval. Private media uses authenticated access checks and short-lived signed links. Local queued business data is encrypted, device PIN verification is stored in SecureStore, and Remember me is opt-in and uses secure device storage.
 
-Before exposing a deployment to the public internet, set a production-only `TRUSTED_ORIGINS` list (do not keep the broad Expo development origin), use HTTPS, protect unique server secrets, keep PostgreSQL and PostgREST private, configure mail delivery, and test database/file backups and restores. Review dependency advisories and deployment-specific access rules before launch. This repository has not had an independent penetration test or a production infrastructure audit, so those target-environment checks remain part of launch readiness.
+Before exposing a deployment to the public internet, set a production-only `TRUSTED_ORIGINS` list (do not keep the broad Expo development origin), use HTTPS, protect unique server secrets, keep PostgreSQL and PostgREST private, configure mail delivery, and test database/file backups and restores. Both dependency trees currently report zero known advisories. This repository has not had an independent penetration test or a production infrastructure audit, so those target-environment checks remain part of launch readiness.
 
 ## Project map
 
